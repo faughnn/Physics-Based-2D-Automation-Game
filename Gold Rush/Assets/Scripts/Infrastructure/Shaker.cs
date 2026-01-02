@@ -123,16 +123,11 @@ namespace GoldRush.Infrastructure
             var grid = SimulationWorld.Instance.Grid;
 
             // Wake all particles in and around the shaker (ActiveSet optimization)
-            // BUT skip particles inside the shaker body - we move those manually straight down
             for (int y = simGridY - 16 - WakeZoneBuffer; y <= simGridY + ShakerBodyDepth + WakeZoneBuffer; y++)
             {
                 for (int x = simGridMinX - WakeZoneBuffer; x <= simGridMaxX + WakeZoneBuffer; x++)
                 {
-                    // Don't wake particles inside the shaker body - ProcessFallingWetSand handles them
-                    bool insideShakerBody = (y > simGridY && y <= simGridY + ShakerBodyDepth &&
-                                             x >= simGridMinX && x <= simGridMaxX);
-
-                    if (!insideShakerBody && MaterialProperties.IsSimulated(grid.Get(x, y)))
+                    if (MaterialProperties.IsSimulated(grid.Get(x, y)))
                     {
                         grid.WakeCell(x, y);
                     }
@@ -235,14 +230,16 @@ namespace GoldRush.Infrastructure
                         if (dy == ShakerBodyDepth)
                         {
                             // At bottom of shaker: wet sand becomes gold and exits
-                            grid.Set(x, y, MaterialType.Air);
-
-                            // Spawn gold below shaker
                             int goldY = simGridY + ShakerBodyDepth + 1;
+
+                            // Only convert if we can spawn gold below
                             if (grid.Get(x, goldY) == MaterialType.Air)
                             {
+                                grid.Set(x, y, MaterialType.Air);
                                 grid.Set(x, goldY, MaterialType.Gold);
+                                grid.WakeCell(x, goldY);  // Wake the gold so it falls
                             }
+                            // Otherwise wet sand waits at bottom until space opens
                         }
                         else
                         {

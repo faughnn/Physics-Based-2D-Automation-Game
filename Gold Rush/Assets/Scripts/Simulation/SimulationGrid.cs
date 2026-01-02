@@ -127,6 +127,14 @@ namespace GoldRush.Simulation
             shakerMeshBlocking[y * Width + x] = blocking;
         }
 
+        // Check if position is inside a shaker mesh (for special movement rules)
+        public bool IsInShakerMesh(int x, int y)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height)
+                return false;
+            return shakerMeshBlocking[y * Width + x];
+        }
+
         // Check if position is blocked by infrastructure for a specific material
         public bool IsBlockedByInfrastructure(int x, int y, MaterialType type = MaterialType.Sand)
         {
@@ -235,6 +243,15 @@ namespace GoldRush.Simulation
             // Skip non-simulated materials
             if (!MaterialProperties.IsSimulated(type))
                 return;
+
+            // Skip non-gold materials inside shaker mesh - shaker handles their movement
+            // They should only fall straight down, controlled by the shaker's ProcessFallingWetSand
+            if (shakerMeshBlocking[index] && type != MaterialType.Gold)
+            {
+                // Keep active but don't process - shaker will move it
+                nextActiveSet.Add(index);
+                return;
+            }
 
             bool moved = false;
 
