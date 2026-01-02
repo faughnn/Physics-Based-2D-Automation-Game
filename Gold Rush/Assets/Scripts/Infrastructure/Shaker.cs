@@ -123,11 +123,16 @@ namespace GoldRush.Infrastructure
             var grid = SimulationWorld.Instance.Grid;
 
             // Wake all particles in and around the shaker (ActiveSet optimization)
+            // BUT skip particles inside the shaker body - we move those manually straight down
             for (int y = simGridY - 16 - WakeZoneBuffer; y <= simGridY + ShakerBodyDepth + WakeZoneBuffer; y++)
             {
                 for (int x = simGridMinX - WakeZoneBuffer; x <= simGridMaxX + WakeZoneBuffer; x++)
                 {
-                    if (MaterialProperties.IsSimulated(grid.Get(x, y)))
+                    // Don't wake particles inside the shaker body - ProcessFallingWetSand handles them
+                    bool insideShakerBody = (y > simGridY && y <= simGridY + ShakerBodyDepth &&
+                                             x >= simGridMinX && x <= simGridMaxX);
+
+                    if (!insideShakerBody && MaterialProperties.IsSimulated(grid.Get(x, y)))
                     {
                         grid.WakeCell(x, y);
                     }
