@@ -12,6 +12,8 @@ namespace GoldRush.Simulation
         public byte Size;          // 2, 4, or 8 (Gravel, Rock, Boulder)
         public MaterialType Type;  // Boulder, Rock, or Gravel
         public Vector2 Velocity;
+        public float SubPositionX; // Fractional position accumulator X
+        public float SubPositionY; // Fractional position accumulator Y
         public int SettleCounter;
         public bool IsActive;
     }
@@ -24,7 +26,6 @@ namespace GoldRush.Simulation
         private uint nextClusterID = 1;
 
         private const int FramesToSettle = 3;
-        private const float VelocityThreshold = 0.1f;
         private System.Random random = new System.Random();
 
         public ClusterManager(SimulationGrid simulationGrid)
@@ -53,6 +54,8 @@ namespace GoldRush.Simulation
                 Size = (byte)size,
                 Type = type,
                 Velocity = Vector2.zero,
+                SubPositionX = 0,
+                SubPositionY = 0,
                 SettleCounter = 0,
                 IsActive = true
             };
@@ -122,11 +125,8 @@ namespace GoldRush.Simulation
             else
             {
                 // Create smaller clusters in a grid pattern
-                // Boulder 8x8 -> 4 Rock 4x4 (2x2 grid of clusters)
-                // Rock 4x4 -> 4 Gravel 2x2 (2x2 grid of clusters)
-
                 List<Vector2Int> clusterPositions = new List<Vector2Int>();
-                int gridCount = oldSize / newSize;  // How many clusters fit per dimension
+                int gridCount = oldSize / newSize;
 
                 for (int gy = 0; gy < gridCount; gy++)
                 {
@@ -139,16 +139,13 @@ namespace GoldRush.Simulation
                     }
                 }
 
-                // Track which cells are used by new clusters
                 HashSet<int> usedCells = new HashSet<int>();
 
-                // Create new clusters
                 foreach (var pos in clusterPositions)
                 {
                     uint newID = CreateCluster(pos.x, pos.y, newSize, newType);
                     if (newID != 0)
                     {
-                        // Mark cells as used
                         for (int dy = 0; dy < newSize; dy++)
                         {
                             for (int dx = 0; dx < newSize; dx++)
@@ -159,7 +156,6 @@ namespace GoldRush.Simulation
                     }
                 }
 
-                // Fill remaining cells with sand (remainder from breaking)
                 for (int dy = 0; dy < oldSize; dy++)
                 {
                     for (int dx = 0; dx < oldSize; dx++)
@@ -201,7 +197,6 @@ namespace GoldRush.Simulation
             }
 
             // Wake any clusters or cells that were resting on top of this one
-            // Check the row just above the old position
             int aboveY = cluster.OriginY - 1;
             if (aboveY >= 0)
             {
@@ -210,14 +205,11 @@ namespace GoldRush.Simulation
                     int checkX = cluster.OriginX + dx;
                     if (grid.InBounds(checkX, aboveY))
                     {
-                        // Wake clusters above
                         uint aboveClusterId = grid.GetClusterID(checkX, aboveY);
                         if (aboveClusterId != 0 && aboveClusterId != id)
                         {
                             WakeCluster(aboveClusterId);
                         }
-
-                        // Wake single cells above (sand, etc.)
                         grid.WakeCellAndNeighbors(checkX, aboveY);
                     }
                 }
@@ -250,30 +242,24 @@ namespace GoldRush.Simulation
                     int checkX = x + dx;
                     int checkY = y + dy;
 
-                    // Check bounds
                     if (!grid.InBounds(checkX, checkY))
                         return false;
 
                     MaterialType cell = grid.Get(checkX, checkY);
                     uint cellCluster = grid.GetClusterID(checkX, checkY);
 
-                    // Allow if it's our own cluster (moving into own space)
                     if (cellCluster == ignoreClusterID && ignoreClusterID != 0)
                         continue;
 
-                    // Block if terrain
                     if (cell == MaterialType.Terrain)
                         return false;
 
-                    // Block if infrastructure
                     if (grid.IsBlockedByInfrastructure(checkX, checkY, cell))
                         return false;
 
-                    // Block if occupied by another cluster
                     if (cellCluster != 0)
                         return false;
 
-                    // Block if occupied by non-air material (single cells)
                     if (cell != MaterialType.Air)
                         return false;
                 }
@@ -283,14 +269,10 @@ namespace GoldRush.Simulation
 
         public void Update()
         {
-            // Copy active clusters to process (so we can modify activeClusters during iteration)
             uint[] toProcess = new uint[activeClusters.Count];
             activeClusters.CopyTo(toProcess);
-
-            // Clear for this frame - UpdateCluster will re-add if still active
             activeClusters.Clear();
 
-            // Process each cluster
             foreach (uint id in toProcess)
             {
                 UpdateCluster(id);
@@ -305,103 +287,140 @@ namespace GoldRush.Simulation
             if (!cluster.IsActive)
                 return;
 
-            // Apply gravity (unified physics system)
-            cluster.Velocity.y += GameSettings.SimGravity;
+            // === UNIFIED PHYSICS STEP (same as SimulationGrid) ===
 
-            // Clamp velocity at terminal velocity
+            // 1. Collect forces: gravity + force zones
+            // Use center of cluster for force zone query
+            int centerX = cluster.OriginX + cluster.Size / 2;
+            int centerY = cluster.OriginY + cluster.Size / 2;
+
+            Vector2 force = new Vector2(0, GameSettings.SimGravity);
+            force += ForceZoneManager.Instance.GetNetForce(centerX, centerY);
+
+            // 2. Update velocity
+            cluster.Velocity += force;
             cluster.Velocity.x = Mathf.Clamp(cluster.Velocity.x, -GameSettings.SimTerminalVelocity, GameSettings.SimTerminalVelocity);
             cluster.Velocity.y = Mathf.Clamp(cluster.Velocity.y, -GameSettings.SimTerminalVelocity, GameSettings.SimTerminalVelocity);
 
+            // 3. Accumulate sub-position
+            cluster.SubPositionX += cluster.Velocity.x;
+            cluster.SubPositionY += cluster.Velocity.y;
+
+            // 4. Calculate cells to move
+            int moveX = (int)cluster.SubPositionX;
+            int moveY = (int)cluster.SubPositionY;
+            cluster.SubPositionX -= moveX;
+            cluster.SubPositionY -= moveY;
+
             bool moved = false;
 
-            // Handle upward movement (from lifts - negative Y in grid coords)
-            if (cluster.Velocity.y <= -1f)
+            // 5. Execute movement one cell at a time
+            while (moveX != 0 || moveY != 0)
             {
-                if (TryMoveCluster(id, 0, -1))
+                int stepX = Mathf.Clamp(moveX, -1, 1);
+                int stepY = Mathf.Clamp(moveY, -1, 1);
+
+                // Try diagonal first if both X and Y need to move
+                if (stepX != 0 && stepY != 0)
                 {
-                    moved = true;
-                    cluster.Velocity.y += 1f;
-                }
-                else
-                {
-                    // Hit something above, stop upward velocity
-                    cluster.Velocity.y = 0;
-                }
-            }
-            // Handle downward movement (falling)
-            else if (cluster.Velocity.y >= 1f)
-            {
-                if (TryMoveCluster(id, 0, 1))
-                {
-                    moved = true;
-                    cluster.Velocity.y -= 1f;
-                }
-                else
-                {
-                    // Hit something below - try diagonal moves like sand
-                    bool tryLeftFirst = random.Next(2) == 0;
-                    if (tryLeftFirst)
+                    if (TryMoveCluster(id, stepX, stepY))
                     {
-                        if (TryMoveCluster(id, -1, 1)) moved = true;
-                        else if (TryMoveCluster(id, 1, 1)) moved = true;
+                        moveX -= stepX;
+                        moveY -= stepY;
+                        moved = true;
+                        // Re-read cluster after move
+                        if (!clusters.TryGetValue(id, out cluster)) return;
+                        continue;
+                    }
+                }
+
+                // Try vertical movement
+                if (stepY != 0)
+                {
+                    if (TryMoveCluster(id, 0, stepY))
+                    {
+                        moveY -= stepY;
+                        moved = true;
+                        // Re-read cluster after move
+                        if (!clusters.TryGetValue(id, out cluster)) return;
                     }
                     else
                     {
-                        if (TryMoveCluster(id, 1, 1)) moved = true;
-                        else if (TryMoveCluster(id, -1, 1)) moved = true;
+                        // Blocked vertically - try diagonal spread when falling
+                        if (stepY > 0)
+                        {
+                            bool tryLeftFirst = random.Next(2) == 0;
+                            if (tryLeftFirst)
+                            {
+                                if (TryMoveCluster(id, -1, 1)) moved = true;
+                                else if (TryMoveCluster(id, 1, 1)) moved = true;
+                            }
+                            else
+                            {
+                                if (TryMoveCluster(id, 1, 1)) moved = true;
+                                else if (TryMoveCluster(id, -1, 1)) moved = true;
+                            }
+                        }
+
+                        // Stop vertical velocity and sub-position
+                        cluster.Velocity.y = 0;
+                        cluster.SubPositionY = 0;
+                        moveY = 0;
+
+                        // Re-read cluster after potential diagonal move
+                        if (!clusters.TryGetValue(id, out cluster)) return;
                     }
-
-                    // Stop vertical velocity
-                    cluster.Velocity.y = 0;
                 }
+
+                // Try horizontal movement
+                if (stepX != 0)
+                {
+                    if (TryMoveCluster(id, stepX, 0))
+                    {
+                        moveX -= stepX;
+                        moved = true;
+                        // Re-read cluster after move
+                        if (!clusters.TryGetValue(id, out cluster)) return;
+                    }
+                    else
+                    {
+                        // Stop horizontal velocity and sub-position
+                        cluster.Velocity.x = 0;
+                        cluster.SubPositionX = 0;
+                        moveX = 0;
+                    }
+                }
+
+                // If we couldn't move at all this iteration, break
+                if (stepX == 0 && stepY == 0)
+                    break;
             }
 
-            // Handle horizontal movement (from belts)
-            if (Mathf.Abs(cluster.Velocity.x) >= 1f)
-            {
-                int moveX = cluster.Velocity.x >= 1f ? 1 : -1;
-                if (TryMoveCluster(id, moveX, 0))
-                {
-                    moved = true;
-                    cluster.Velocity.x -= moveX;
-                }
-                else
-                {
-                    // Hit something, stop horizontal velocity
-                    cluster.Velocity.x = 0;
-                }
-            }
+            // 6. Update settle state
+            bool hasForces = ForceZoneManager.Instance.HasForceAt(centerX, centerY);
+            bool hasVelocity = cluster.Velocity.sqrMagnitude > 0.01f;
 
-            // Clusters fall straight down only - no diagonal movement
-            // (Unlike sand, rocks and boulders don't spread sideways)
+            // Check if can potentially fall
+            bool canFall = IsFootprintClear(cluster.OriginX, cluster.OriginY + 1, cluster.Size, id);
 
-            // Re-read cluster from dictionary to get updated position from TryMoveCluster
-            // (TryMoveCluster updates the dictionary, but we have a stale local copy)
-            // Preserve our velocity modifications since TryMoveCluster overwrites with old velocity
-            Vector2 currentVelocity = cluster.Velocity;
-            if (!clusters.TryGetValue(id, out cluster))
-                return;
-            cluster.Velocity = currentVelocity;
-
-            // Update settle state
             if (moved)
             {
                 cluster.SettleCounter = 0;
                 cluster.IsActive = true;
                 activeClusters.Add(id);
             }
-            else
+            else if (hasForces || canFall || hasVelocity || cluster.SettleCounter < FramesToSettle)
             {
                 cluster.SettleCounter++;
-                if (cluster.SettleCounter >= FramesToSettle)
-                {
-                    cluster.IsActive = false;
-                    cluster.Velocity = Vector2.zero;
-                }
-                else
-                {
-                    activeClusters.Add(id);
-                }
+                cluster.IsActive = true;
+                activeClusters.Add(id);
+            }
+            else
+            {
+                cluster.IsActive = false;
+                cluster.Velocity = Vector2.zero;
+                cluster.SubPositionX = 0;
+                cluster.SubPositionY = 0;
             }
 
             clusters[id] = cluster;

@@ -11,7 +11,9 @@ namespace GoldRush.Simulation
 
         private readonly MaterialType[] cells;
         private readonly bool[] updatedThisFrame;
-        private readonly Vector2[] velocities;  // Per-cell velocity for kickback/lift effects
+        private readonly Vector2[] velocities;  // Per-cell velocity
+        private readonly float[] subPositionX;  // Fractional position accumulator X
+        private readonly float[] subPositionY;  // Fractional position accumulator Y
         private readonly bool[] infrastructureBlocking;  // Cells blocked by infrastructure (solid)
         private readonly bool[] shakerMeshBlocking;  // Cells blocked by shaker mesh (gold passes through)
         private readonly MaterialType[] filterBlocking;  // Cells that only block a specific material type
@@ -31,9 +33,6 @@ namespace GoldRush.Simulation
         private readonly int[] settleCounters;  // Frames since last movement per cell
         private const int FramesToSettle = 3;  // Frames without movement before sleeping
 
-        private const float VelocityFriction = 0.85f;  // Velocity decay per frame
-        private const float VelocityThreshold = 0.1f;  // Minimum velocity before zeroing
-
         public SimulationGrid(int width, int height)
         {
             Width = width;
@@ -41,6 +40,8 @@ namespace GoldRush.Simulation
             cells = new MaterialType[width * height];
             updatedThisFrame = new bool[width * height];
             velocities = new Vector2[width * height];
+            subPositionX = new float[width * height];
+            subPositionY = new float[width * height];
             infrastructureBlocking = new bool[width * height];
             shakerMeshBlocking = new bool[width * height];
             filterBlocking = new MaterialType[width * height];
@@ -60,6 +61,8 @@ namespace GoldRush.Simulation
             {
                 cells[i] = MaterialType.Air;
                 velocities[i] = Vector2.zero;
+                subPositionX[i] = 0f;
+                subPositionY[i] = 0f;
                 infrastructureBlocking[i] = false;
                 shakerMeshBlocking[i] = false;
                 filterBlocking[i] = MaterialType.Air;  // Air means no filter
@@ -284,7 +287,7 @@ namespace GoldRush.Simulation
 
                 MaterialType below = Get(x, y + 1);
                 bool canPotentiallyFall = (below == MaterialType.Air || MaterialProperties.CanDisplace(type, below));
-                bool hasVelocity = velocities[index].sqrMagnitude > VelocityThreshold * VelocityThreshold;
+                bool hasVelocity = velocities[index].sqrMagnitude > 0.01f;
                 bool isSettling = settleCounters[index] < FramesToSettle;
 
                 if (canPotentiallyFall) b.canFall++;
@@ -343,300 +346,169 @@ namespace GoldRush.Simulation
                 return;
 
             // Skip non-gold materials inside shaker mesh - shaker handles their movement
-            // They should only fall straight down, controlled by the shaker's ProcessFallingWetSand
             if (shakerMeshBlocking[index] && type != MaterialType.Gold)
             {
-                // Keep active but don't process - shaker will move it
                 nextActiveSet.Add(index);
                 return;
             }
 
-            bool moved = false;
+            // === UNIFIED PHYSICS STEP ===
 
-            // Apply gravity to velocity (unified physics system)
+            // 1. Collect forces: gravity + force zones
+            Vector2 force = new Vector2(0, GameSettings.SimGravity);
+            force += ForceZoneManager.Instance.GetNetForce(x, y);
+
+            // 2. Update velocity
             Vector2 vel = velocities[index];
-
-            // Snappy start: if particle is at rest and can fall, give it initial push
-            // Only apply when truly stationary (not when lift is pushing upward)
-            if (Mathf.Abs(vel.y) < 0.1f)
-            {
-                MaterialType below = Get(x, y + 1);
-                bool canFall = (below == MaterialType.Air || MaterialProperties.CanDisplace(type, below));
-                if (canFall)
-                {
-                    vel.y = 1f;  // Initial downward velocity for immediate movement
-                }
-            }
-
-            // Apply gravity (always pulls down)
-            vel.y += GameSettings.SimGravity;
-
-            // Cap at terminal velocity
-            if (vel.y > GameSettings.SimTerminalVelocity)
-                vel.y = GameSettings.SimTerminalVelocity;
-
+            vel += force;
+            vel.x = Mathf.Clamp(vel.x, -GameSettings.SimTerminalVelocity, GameSettings.SimTerminalVelocity);
+            vel.y = Mathf.Clamp(vel.y, -GameSettings.SimTerminalVelocity, GameSettings.SimTerminalVelocity);
             velocities[index] = vel;
 
-            // First, try velocity-based movement (use ray casting for high speeds)
-            if (vel.sqrMagnitude > VelocityThreshold * VelocityThreshold)
-            {
-                float speed = vel.magnitude;
+            // 3. Accumulate sub-position
+            subPositionX[index] += vel.x;
+            subPositionY[index] += vel.y;
 
-                if (speed > 1.5f)
+            // 4. Calculate cells to move
+            int moveX = (int)subPositionX[index];
+            int moveY = (int)subPositionY[index];
+            subPositionX[index] -= moveX;
+            subPositionY[index] -= moveY;
+
+            bool moved = false;
+            int currentX = x;
+            int currentY = y;
+
+            // 5. Execute movement one cell at a time
+            while (moveX != 0 || moveY != 0)
+            {
+                int stepX = Mathf.Clamp(moveX, -1, 1);
+                int stepY = Mathf.Clamp(moveY, -1, 1);
+
+                int targetX = currentX + stepX;
+                int targetY = currentY + stepY;
+
+                if (TryMoveUnified(currentX, currentY, targetX, targetY, type))
                 {
-                    // High velocity - use ray casting to prevent tunneling
-                    if (TryMoveWithRayCast(x, y, vel, type))
-                    {
-                        return;  // Ray casting handles ActiveSet and velocity
-                    }
-                    else
-                    {
-                        // Hit something - reduce velocity significantly
-                        velocities[index] = vel * 0.3f;
-                    }
+                    currentX = targetX;
+                    currentY = targetY;
+                    moveX -= stepX;
+                    moveY -= stepY;
+                    moved = true;
                 }
                 else
                 {
-                    // Low velocity - use simple single-step movement
-                    int moveX = Mathf.RoundToInt(vel.x);
-                    int moveY = Mathf.RoundToInt(vel.y);
+                    // Blocked - try to resolve
+                    bool resolvedX = (stepX == 0);
+                    bool resolvedY = (stepY == 0);
 
-                    if (moveX != 0 || moveY != 0)
+                    // If moving diagonally and blocked, try axis-aligned moves
+                    if (stepX != 0 && stepY != 0)
                     {
-                        int targetX = x + Mathf.Clamp(moveX, -1, 1);
-                        int targetY = y + Mathf.Clamp(moveY, -1, 1);
-
-                        if (TryMoveWithVelocity(x, y, targetX, targetY, type))
+                        // Try vertical only
+                        if (TryMoveUnified(currentX, currentY, currentX, currentY + stepY, type))
                         {
-                            // Apply friction to velocity at new position
-                            Vector2 newVel = vel * VelocityFriction;
-                            if (newVel.sqrMagnitude < VelocityThreshold * VelocityThreshold)
-                                newVel = Vector2.zero;
-                            velocities[targetY * Width + targetX] = newVel;
-                            return;  // TryMoveWithVelocity already handles ActiveSet
+                            currentY += stepY;
+                            moveY -= stepY;
+                            moved = true;
+                            resolvedY = true;
                         }
-                        else
+                        // Try horizontal only
+                        else if (TryMoveUnified(currentX, currentY, currentX + stepX, currentY, type))
                         {
-                            // Hit something - reduce velocity significantly
-                            velocities[index] = vel * 0.3f;
+                            currentX += stepX;
+                            moveX -= stepX;
+                            moved = true;
+                            resolvedX = true;
                         }
                     }
+
+                    // Zero velocity in blocked directions
+                    int newIndex = currentY * Width + currentX;
+                    if (!resolvedX && stepX != 0)
+                    {
+                        velocities[newIndex] = new Vector2(0, velocities[newIndex].y);
+                        subPositionX[newIndex] = 0;
+                        moveX = 0;
+                    }
+                    if (!resolvedY && stepY != 0)
+                    {
+                        // Try diagonal spread when falling and blocked below
+                        if (stepY > 0 && TryDiagonalSpread(currentX, currentY, type))
+                        {
+                            moved = true;
+                            // Position updated by TryDiagonalSpread, exit loop
+                            break;
+                        }
+
+                        velocities[newIndex] = new Vector2(velocities[newIndex].x, 0);
+                        subPositionY[newIndex] = 0;
+                        moveY = 0;
+                    }
+
+                    if (!resolvedX && !resolvedY)
+                        break;
                 }
             }
 
-            // Skip normal falling if particle has ANY upward velocity (being lifted)
-            Vector2 currentVel = velocities[index];
-            if (currentVel.y < 0f)
+            // 6. Handle water horizontal spread (special case)
+            if (!moved && type == MaterialType.Water)
             {
-                // Particle is being pushed upward - keep active, don't try to fall
-                nextActiveSet.Add(index);
-                return;
+                moved = TryWaterSpread(currentX, currentY);
             }
 
-            // Then apply normal falling behavior
-            if (type == MaterialType.Water)
-            {
-                moved = UpdateWater(x, y);
-            }
-            else
-            {
-                moved = UpdateFalling(x, y, type);
-            }
-
-            // Handle settling - if didn't move, manage sleep state
-            if (!moved)
-            {
-                // Decay velocity when blocked (particle couldn't move)
-                Vector2 remainingVel = velocities[index];
-                if (remainingVel.sqrMagnitude > 0)
-                {
-                    remainingVel *= VelocityFriction;
-                    if (remainingVel.sqrMagnitude < VelocityThreshold * VelocityThreshold)
-                        remainingVel = Vector2.zero;
-                    velocities[index] = remainingVel;
-                }
-
-                // Check if particle could potentially fall (don't sleep if space below)
-                MaterialType below = Get(x, y + 1);
-                bool canPotentiallyFall = (below == MaterialType.Air || MaterialProperties.CanDisplace(type, below));
-
-                // Check if particle still has velocity or hasn't settled yet
-                if (canPotentiallyFall ||
-                    remainingVel.sqrMagnitude > VelocityThreshold * VelocityThreshold ||
-                    settleCounters[index] < FramesToSettle)
-                {
-                    // Keep active - can fall, has velocity, or still settling
-                    nextActiveSet.Add(index);
-                    settleCounters[index]++;
-                }
-                // else: particle sleeps (not added to nextActiveSet)
-            }
-            // If moved, TryMove already added to nextActiveSet
+            // 7. Sleep check
+            UpdateSleepState(currentX, currentY, moved);
         }
 
-        // Update falling materials (sand, wetsand, gold, slag)
-        // Returns true if particle moved
-        private bool UpdateFalling(int x, int y, MaterialType type)
+        // Try diagonal spread when falling is blocked (forms pyramids)
+        private bool TryDiagonalSpread(int x, int y, MaterialType type)
         {
-            // Try to fall straight down
-            if (TryMove(x, y, x, y + 1, type))
-                return true;
-
-            // Try to fall diagonally (randomize direction to prevent bias)
             bool tryLeftFirst = random.Next(2) == 0;
 
             if (tryLeftFirst)
             {
-                if (TryMove(x, y, x - 1, y + 1, type)) return true;
-                if (TryMove(x, y, x + 1, y + 1, type)) return true;
+                if (TryMoveUnified(x, y, x - 1, y + 1, type)) return true;
+                if (TryMoveUnified(x, y, x + 1, y + 1, type)) return true;
             }
             else
             {
-                if (TryMove(x, y, x + 1, y + 1, type)) return true;
-                if (TryMove(x, y, x - 1, y + 1, type)) return true;
+                if (TryMoveUnified(x, y, x + 1, y + 1, type)) return true;
+                if (TryMoveUnified(x, y, x - 1, y + 1, type)) return true;
             }
-
-            // Can't move - stay in place
             return false;
         }
 
-        // Update water - falls and spreads horizontally
-        // Returns true if water moved
-        private bool UpdateWater(int x, int y)
+        // Water horizontal spreading
+        private bool TryWaterSpread(int x, int y)
         {
-            // Try to fall straight down
-            if (TryMove(x, y, x, y + 1, MaterialType.Water))
-                return true;
-
-            // Try to fall diagonally
-            bool tryLeftFirst = random.Next(2) == 0;
-
-            if (tryLeftFirst)
-            {
-                if (TryMove(x, y, x - 1, y + 1, MaterialType.Water)) return true;
-                if (TryMove(x, y, x + 1, y + 1, MaterialType.Water)) return true;
-            }
-            else
-            {
-                if (TryMove(x, y, x + 1, y + 1, MaterialType.Water)) return true;
-                if (TryMove(x, y, x - 1, y + 1, MaterialType.Water)) return true;
-            }
-
-            // Can't fall - try to spread horizontally
             int spreadDist = MaterialProperties.GetSpreadDistance(MaterialType.Water);
             bool spreadLeft = random.Next(2) == 0;
 
             for (int i = 1; i <= spreadDist; i++)
             {
-                int targetX = spreadLeft ? x - i : x + i;
-
-                // Check if we can move there
-                MaterialType target = Get(targetX, y);
-                if (target == MaterialType.Air)
-                {
-                    // Check if there's space below (prefer falling)
-                    MaterialType below = Get(targetX, y + 1);
-                    if (below == MaterialType.Air || MaterialProperties.CanDisplace(MaterialType.Water, below))
-                    {
-                        // Move there - it will fall next frame
-                        TryMove(x, y, targetX, y, MaterialType.Water);
-                        return true;
-                    }
-                    else
-                    {
-                        // Just spread horizontally
-                        TryMove(x, y, targetX, y, MaterialType.Water);
-                        return true;
-                    }
-                }
-                else if (target != MaterialType.Air)
-                {
-                    // Hit something solid, stop spreading this direction
-                    break;
-                }
+                int checkX = spreadLeft ? x - i : x + i;
+                if (TryMoveUnified(x, y, checkX, y, MaterialType.Water))
+                    return true;
             }
 
             // Try other direction
-            spreadLeft = !spreadLeft;
             for (int i = 1; i <= spreadDist; i++)
             {
-                int targetX = spreadLeft ? x - i : x + i;
-                MaterialType target = Get(targetX, y);
-                if (target == MaterialType.Air)
-                {
-                    TryMove(x, y, targetX, y, MaterialType.Water);
+                int checkX = spreadLeft ? x + i : x - i;
+                if (TryMoveUnified(x, y, checkX, y, MaterialType.Water))
                     return true;
-                }
-                else if (target != MaterialType.Air)
-                {
-                    break;
-                }
             }
 
             return false;
         }
 
-        // Try to move a cell from one position to another
-        private bool TryMove(int fromX, int fromY, int toX, int toY, MaterialType type)
+        // Unified movement with velocity/subposition transfer
+        private bool TryMoveUnified(int fromX, int fromY, int toX, int toY, MaterialType type)
         {
             if (!InBounds(toX, toY))
                 return false;
 
-            // Check if blocked by infrastructure (gold can pass through shaker mesh)
-            if (IsBlockedByInfrastructure(toX, toY, type))
-                return false;
-
-            MaterialType target = Get(toX, toY);
-
-            // Can we move into this space?
-            if (target == MaterialType.Air)
-            {
-                // Simple move into empty space
-                cells[fromY * Width + fromX] = MaterialType.Air;
-                cells[toY * Width + toX] = type;
-                MarkUpdated(toX, toY);
-
-                // ActiveSet management: add new position
-                int toIndex = toY * Width + toX;
-                nextActiveSet.Add(toIndex);
-                settleCounters[toIndex] = 0;
-
-                // Only wake cells that could actually fall into the vacated space
-                // (above and diagonal-above, not sideways or below)
-                WakeCell(fromX, fromY - 1);      // Directly above
-                WakeCell(fromX - 1, fromY - 1);  // Diagonal above-left
-                WakeCell(fromX + 1, fromY - 1);  // Diagonal above-right
-
-                return true;
-            }
-            else if (MaterialProperties.CanDisplace(type, target))
-            {
-                // Swap positions (density displacement)
-                cells[fromY * Width + fromX] = target;
-                cells[toY * Width + toX] = type;
-                MarkUpdated(toX, toY);
-
-                // ActiveSet management: both positions need processing
-                int toIndex = toY * Width + toX;
-                int fromIndex = fromY * Width + fromX;
-                nextActiveSet.Add(toIndex);
-                nextActiveSet.Add(fromIndex);  // Displaced material needs to move
-                settleCounters[toIndex] = 0;
-                settleCounters[fromIndex] = 0;
-
-                return true;
-            }
-
-            return false;
-        }
-
-        // Try to move a cell with velocity transfer
-        private bool TryMoveWithVelocity(int fromX, int fromY, int toX, int toY, MaterialType type)
-        {
-            if (!InBounds(toX, toY))
-                return false;
-
-            // Check if blocked by infrastructure (gold can pass through shaker mesh)
             if (IsBlockedByInfrastructure(toX, toY, type))
                 return false;
 
@@ -644,20 +516,26 @@ namespace GoldRush.Simulation
 
             if (target == MaterialType.Air)
             {
-                // Move cell and transfer velocity
                 int fromIndex = fromY * Width + fromX;
                 int toIndex = toY * Width + toX;
 
+                // Move cell
                 cells[fromIndex] = MaterialType.Air;
                 cells[toIndex] = type;
-                velocities[fromIndex] = Vector2.zero;  // Clear old position velocity
-                MarkUpdated(toX, toY);
 
-                // ActiveSet management
+                // Transfer velocity and sub-position
+                velocities[toIndex] = velocities[fromIndex];
+                subPositionX[toIndex] = subPositionX[fromIndex];
+                subPositionY[toIndex] = subPositionY[fromIndex];
+                velocities[fromIndex] = Vector2.zero;
+                subPositionX[fromIndex] = 0;
+                subPositionY[fromIndex] = 0;
+
+                MarkUpdated(toX, toY);
                 nextActiveSet.Add(toIndex);
                 settleCounters[toIndex] = 0;
 
-                // Only wake cells above that could fall into vacated space
+                // Wake cells above that could fall
                 WakeCell(fromX, fromY - 1);
                 WakeCell(fromX - 1, fromY - 1);
                 WakeCell(fromX + 1, fromY - 1);
@@ -666,21 +544,29 @@ namespace GoldRush.Simulation
             }
             else if (MaterialProperties.CanDisplace(type, target))
             {
-                // Swap with velocity transfer
                 int fromIndex = fromY * Width + fromX;
                 int toIndex = toY * Width + toX;
 
-                Vector2 fromVel = velocities[fromIndex];
-                Vector2 toVel = velocities[toIndex];
-
+                // Swap cells
                 cells[fromIndex] = target;
                 cells[toIndex] = type;
-                velocities[fromIndex] = toVel * 0.5f;  // Displaced gets partial velocity
-                MarkUpdated(toX, toY);
 
-                // ActiveSet management: both positions need processing
+                // Transfer velocity to new position, displaced gets some momentum
+                Vector2 movingVel = velocities[fromIndex];
+                velocities[toIndex] = movingVel;
+                velocities[fromIndex] = movingVel * 0.3f;  // Displaced gets partial momentum
+
+                // Transfer sub-position
+                float subX = subPositionX[fromIndex];
+                float subY = subPositionY[fromIndex];
+                subPositionX[toIndex] = subX;
+                subPositionY[toIndex] = subY;
+                subPositionX[fromIndex] = 0;
+                subPositionY[fromIndex] = 0;
+
+                MarkUpdated(toX, toY);
                 nextActiveSet.Add(toIndex);
-                nextActiveSet.Add(fromIndex);  // Displaced material needs to move
+                nextActiveSet.Add(fromIndex);  // Displaced needs processing
                 settleCounters[toIndex] = 0;
                 settleCounters[fromIndex] = 0;
 
@@ -690,122 +576,36 @@ namespace GoldRush.Simulation
             return false;
         }
 
-        // Ray casting movement for high-velocity particles (prevents tunneling)
-        private const int MaxRayCastSteps = 10;
-
-        private bool TryMoveWithRayCast(int x, int y, Vector2 velocity, MaterialType type)
+        // Update sleep state for a particle
+        private void UpdateSleepState(int x, int y, bool moved)
         {
-            float speed = velocity.magnitude;
-            if (speed < 1f)
-                return false;
+            int index = y * Width + x;
+            Vector2 vel = velocities[index];
 
-            int steps = Mathf.CeilToInt(speed);
-            steps = Mathf.Min(steps, MaxRayCastSteps);
-
-            Vector2 direction = velocity.normalized;
-            int currentX = x;
-            int currentY = y;
-
-            // Accumulate fractional movement for diagonal paths
-            float accumX = 0f;
-            float accumY = 0f;
-
-            for (int i = 0; i < steps; i++)
-            {
-                accumX += direction.x;
-                accumY += direction.y;
-
-                int stepX = Mathf.RoundToInt(accumX);
-                int stepY = Mathf.RoundToInt(accumY);
-
-                if (stepX == 0 && stepY == 0)
-                    continue;
-
-                int nextX = currentX + stepX;
-                int nextY = currentY + stepY;
-
-                // Reset accumulators after taking a step
-                accumX -= stepX;
-                accumY -= stepY;
-
-                // Try to move one step
-                if (!TryMoveOneStep(currentX, currentY, nextX, nextY, type))
-                {
-                    // Hit obstacle - stop here
-                    break;
-                }
-
-                currentX = nextX;
-                currentY = nextY;
-            }
-
-            bool moved = (currentX != x || currentY != y);
             if (moved)
             {
-                // Apply reduced velocity at final position
-                int finalIndex = currentY * Width + currentX;
-                Vector2 newVel = velocity * VelocityFriction;
-                if (newVel.sqrMagnitude < VelocityThreshold * VelocityThreshold)
-                    newVel = Vector2.zero;
-                velocities[finalIndex] = newVel;
+                nextActiveSet.Add(index);
+                settleCounters[index] = 0;
+                return;
             }
 
-            return moved;
-        }
+            // Check if there are forces at this position
+            bool hasForces = ForceZoneManager.Instance.HasForceAt(x, y);
 
-        // Single step movement for ray casting (no velocity transfer)
-        private bool TryMoveOneStep(int fromX, int fromY, int toX, int toY, MaterialType type)
-        {
-            if (!InBounds(toX, toY))
-                return false;
+            // Check if can potentially fall
+            MaterialType type = cells[index];
+            MaterialType below = Get(x, y + 1);
+            bool canFall = (below == MaterialType.Air || MaterialProperties.CanDisplace(type, below));
 
-            // Check if blocked by infrastructure (gold can pass through shaker mesh)
-            if (IsBlockedByInfrastructure(toX, toY, type))
-                return false;
+            // Check if has velocity
+            bool hasVelocity = vel.sqrMagnitude > 0.01f;
 
-            MaterialType target = Get(toX, toY);
-
-            if (target == MaterialType.Air)
+            if (hasForces || canFall || hasVelocity || settleCounters[index] < FramesToSettle)
             {
-                int fromIndex = fromY * Width + fromX;
-                int toIndex = toY * Width + toX;
-
-                cells[fromIndex] = MaterialType.Air;
-                cells[toIndex] = type;
-                velocities[fromIndex] = Vector2.zero;
-                MarkUpdated(toX, toY);
-
-                // ActiveSet management
-                nextActiveSet.Add(toIndex);
-                settleCounters[toIndex] = 0;
-
-                // Only wake cells above that could fall into vacated space
-                WakeCell(fromX, fromY - 1);
-                WakeCell(fromX - 1, fromY - 1);
-                WakeCell(fromX + 1, fromY - 1);
-
-                return true;
+                nextActiveSet.Add(index);
+                settleCounters[index]++;
             }
-            else if (MaterialProperties.CanDisplace(type, target))
-            {
-                int fromIndex = fromY * Width + fromX;
-                int toIndex = toY * Width + toX;
-
-                cells[fromIndex] = target;
-                cells[toIndex] = type;
-                velocities[fromIndex] = Vector2.zero;
-                MarkUpdated(toX, toY);
-
-                // ActiveSet management
-                nextActiveSet.Add(toIndex);
-                nextActiveSet.Add(fromIndex);
-                settleCounters[toIndex] = 0;
-                settleCounters[fromIndex] = 0;
-
-                return true;
-            }
-
-            return false;
+            // else: particle sleeps
         }
 
         private void MarkUpdated(int x, int y)
