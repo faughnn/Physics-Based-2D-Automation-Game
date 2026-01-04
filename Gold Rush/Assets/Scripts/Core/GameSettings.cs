@@ -39,10 +39,16 @@ namespace GoldRush.Core
         public const int PlayerWidth = 24; // pixels
         public const int PlayerHeight = 48; // pixels
 
+        // Simulation Physics (unified velocity-based system)
+        public const float SimGravity = 0.5f;           // Downward acceleration per frame
+        public const float SimTerminalVelocity = 8f;    // Max falling/rising speed
+        public const float SimLiftForce = 2.0f;         // Upward push per frame (strong to overcome collisions)
+        public const float SimBlowerForce = 1.5f;       // Horizontal push per frame
+
         // Infrastructure
         public const float BeltSpeed = 3f;
-        public const float LiftSpeed = 150f;
-        public const float LiftAcceleration = 10f; // Slower, gradual acceleration
+        public const float LiftSpeed = 150f;            // DEPRECATED - using SimLiftForce now
+        public const float LiftAcceleration = 10f;      // DEPRECATED - using direct addition now
         public const float ShakerFallInterval = 1.5f; // seconds per cell - wet sand falls slowly through shaker
         public const float ShakerPushSpeed = 0.5f;
         public const int BeltSize = 16; // 16x16 pixels for small belts (quarter of grid cell)

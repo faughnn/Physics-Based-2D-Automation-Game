@@ -17,7 +17,7 @@ namespace GoldRush.UI
             rectTransform.anchorMax = new Vector2(0.5f, 1f);
             rectTransform.pivot = new Vector2(0.5f, 1f);
             rectTransform.anchoredPosition = new Vector2(0, -10);
-            rectTransform.sizeDelta = new Vector2(900, 80);
+            rectTransform.sizeDelta = new Vector2(1120, 80);
 
             // Background
             Image bg = gameObject.AddComponent<Image>();
@@ -32,21 +32,23 @@ namespace GoldRush.UI
 
         private void CreateButtons()
         {
-            string[] names = { "Wall", "Belt", "Lift", "Blower", "Shaker", "Gold Store", "Stamp", "Roller", "Jaw" };
+            string[] names = { "Wall", "Belt", "Filter", "Lift", "Blower", "Big Crush", "Sm Crush", "Grinder", "Shaker", "Smelter", "Gold Store" };
             BuildType[] types = {
-                BuildType.Wall, BuildType.Belt, BuildType.Lift, BuildType.Blower, BuildType.Shaker, BuildType.GoldStore,
-                BuildType.StampMill, BuildType.RollerCrusher, BuildType.JawCrusher
+                BuildType.Wall, BuildType.Belt, BuildType.FilterBelt, BuildType.Lift, BuildType.Blower,
+                BuildType.BigCrusher, BuildType.SmallCrusher, BuildType.Grinder, BuildType.Shaker, BuildType.Smelter, BuildType.GoldStore
             };
             Color[] colors = {
                 new Color(0.3f, 0.3f, 0.3f),      // Wall
                 new Color(0.25f, 0.25f, 0.25f),   // Belt
+                new Color(0.3f, 0.3f, 0.4f),      // Filter (darker blue-grey)
                 new Color(0.25f, 0.25f, 0.25f),   // Lift
                 new Color(0.4f, 0.7f, 1f),        // Blower (light blue)
+                new Color(0.35f, 0.35f, 0.4f),    // Big Crusher (dark grey-blue)
+                new Color(0.4f, 0.35f, 0.35f),    // Small Crusher (reddish grey)
+                new Color(0.6f, 0.55f, 0.5f),     // Grinder (light brown metal)
                 new Color(1f, 0.5f, 0f),          // Shaker
-                new Color(1f, 0.84f, 0f),         // Gold Store
-                new Color(0.4f, 0.3f, 0.2f),      // Stamp Mill (brown)
-                new Color(0.3f, 0.3f, 0.35f),     // Roller Crusher (blue-grey)
-                new Color(0.45f, 0.45f, 0.5f)     // Jaw Crusher (grey)
+                new Color(0.5f, 0.25f, 0.15f),    // Smelter (brick red)
+                new Color(1f, 0.84f, 0f)          // Gold Store
             };
 
             buildButtons = new Button[names.Length];

@@ -16,6 +16,9 @@ namespace GoldRush.Player
         public bool IsInBuildMode => BuildSystem.Instance != null &&
                                      BuildSystem.Instance.CurrentBuildType != BuildType.None;
 
+        // Pickup tool active
+        public bool IsPickupToolActive => PickupTool.Instance != null && PickupTool.Instance.IsEnabled;
+
         private Camera mainCamera;
 
         // Dig preview
@@ -69,7 +72,8 @@ namespace GoldRush.Player
             UpdateDigPreview();
 
             // Handle digging (hold left click to continuously dig)
-            if (Input.GetMouseButton(0) && !IsInBuildMode && digCooldown <= 0)
+            // Disabled when in build mode or pickup tool is active
+            if (Input.GetMouseButton(0) && !IsInBuildMode && !IsPickupToolActive && digCooldown <= 0)
             {
                 TryDig();
                 digCooldown = DigCooldownTime;
@@ -109,8 +113,8 @@ namespace GoldRush.Player
         {
             if (mainCamera == null || digPreview == null) return;
 
-            // Hide preview if in build mode or on cooldown
-            if (IsInBuildMode || digCooldown > 0)
+            // Hide preview if in build mode, pickup tool active, or on cooldown
+            if (IsInBuildMode || IsPickupToolActive || digCooldown > 0)
             {
                 digPreview.SetActive(false);
                 return;
@@ -150,6 +154,7 @@ namespace GoldRush.Player
         private void TryDig()
         {
             if (mainCamera == null) return;
+            if (GameManager.Instance == null) return;
 
             // Get mouse position in world coordinates
             Vector2 mouseWorldPos = mainCamera.ScreenToWorldPoint(Input.mousePosition);

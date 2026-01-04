@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using GoldRush.Core;
 
 namespace GoldRush.Simulation
 {
@@ -13,7 +14,16 @@ namespace GoldRush.Simulation
         private readonly Vector2[] velocities;  // Per-cell velocity for kickback/lift effects
         private readonly bool[] infrastructureBlocking;  // Cells blocked by infrastructure (solid)
         private readonly bool[] shakerMeshBlocking;  // Cells blocked by shaker mesh (gold passes through)
+        private readonly MaterialType[] filterBlocking;  // Cells that only block a specific material type
+        private readonly uint[] clusterIDs;  // 0 = not part of a cluster, >0 = cluster ID
         private readonly System.Random random;
+
+        // Cluster management
+        private ClusterManager clusterManager;
+        public ClusterManager ClusterManager => clusterManager;
+
+        // Profiling
+        public int ActiveCellCount => activeSet.Count;
 
         // ActiveSet system - only process active particles
         private HashSet<int> activeSet;
@@ -33,12 +43,17 @@ namespace GoldRush.Simulation
             velocities = new Vector2[width * height];
             infrastructureBlocking = new bool[width * height];
             shakerMeshBlocking = new bool[width * height];
+            filterBlocking = new MaterialType[width * height];
+            clusterIDs = new uint[width * height];
             settleCounters = new int[width * height];
             random = new System.Random();
 
             // Initialize ActiveSet system
             activeSet = new HashSet<int>();
             nextActiveSet = new HashSet<int>();
+
+            // Initialize ClusterManager
+            clusterManager = new ClusterManager(this);
 
             // Initialize all cells to air
             for (int i = 0; i < cells.Length; i++)
@@ -47,6 +62,8 @@ namespace GoldRush.Simulation
                 velocities[i] = Vector2.zero;
                 infrastructureBlocking[i] = false;
                 shakerMeshBlocking[i] = false;
+                filterBlocking[i] = MaterialType.Air;  // Air means no filter
+                clusterIDs[i] = 0;  // Not part of any cluster
                 settleCounters[i] = 0;
             }
         }
@@ -74,15 +91,20 @@ namespace GoldRush.Simulation
             {
                 if (MaterialProperties.IsSimulated(type))
                 {
-                    // New simulated material - wake it and neighbors
+                    // New simulated material - wake it
                     nextActiveSet.Add(index);  // Use nextActiveSet to avoid collection modification during iteration
                     settleCounters[index] = 0;
-                    WakeNeighborsAt(x, y);
+                    // Wake cells above that might fall onto this new material
+                    WakeCell(x, y - 1);
+                    WakeCell(x - 1, y - 1);
+                    WakeCell(x + 1, y - 1);
                 }
                 else if (MaterialProperties.IsSimulated(oldType))
                 {
-                    // Cell was cleared - wake neighbors so they can fall into vacated space
-                    WakeNeighborsAt(x, y);
+                    // Cell was cleared - wake cells above so they can fall into vacated space
+                    WakeCell(x, y - 1);
+                    WakeCell(x - 1, y - 1);
+                    WakeCell(x + 1, y - 1);
                 }
             }
         }
@@ -127,6 +149,38 @@ namespace GoldRush.Simulation
             shakerMeshBlocking[y * Width + x] = blocking;
         }
 
+        // Set filter blocking at position (blocks ONLY the specified material, Air = no filter)
+        public void SetFilterBlocking(int x, int y, MaterialType filterType)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height)
+                return;
+            filterBlocking[y * Width + x] = filterType;
+        }
+
+        // Get the filter type at a position
+        public MaterialType GetFilterBlocking(int x, int y)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height)
+                return MaterialType.Air;
+            return filterBlocking[y * Width + x];
+        }
+
+        // Get cluster ID at position (0 = not part of a cluster)
+        public uint GetClusterID(int x, int y)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height)
+                return 0;
+            return clusterIDs[y * Width + x];
+        }
+
+        // Set cluster ID at position
+        public void SetClusterID(int x, int y, uint id)
+        {
+            if (x < 0 || x >= Width || y < 0 || y >= Height)
+                return;
+            clusterIDs[y * Width + x] = id;
+        }
+
         // Check if position is inside a shaker mesh (for special movement rules)
         public bool IsInShakerMesh(int x, int y)
         {
@@ -148,6 +202,11 @@ namespace GoldRush.Simulation
 
             // Shaker mesh blocks everything EXCEPT gold
             if (shakerMeshBlocking[index] && type != MaterialType.Gold)
+                return true;
+
+            // Filter blocking - blocks ONLY the specified material type
+            MaterialType filter = filterBlocking[index];
+            if (filter != MaterialType.Air && filter == type)
                 return true;
 
             return false;
@@ -203,6 +262,38 @@ namespace GoldRush.Simulation
             return activeSet.Count;
         }
 
+        // Debug: Get breakdown of why cells are staying active
+        public struct ActiveBreakdown
+        {
+            public int moved;
+            public int canFall;
+            public int hasVel;
+            public int settling;
+        }
+
+        public ActiveBreakdown GetActiveBreakdown()
+        {
+            ActiveBreakdown b = new ActiveBreakdown();
+            foreach (int index in activeSet)
+            {
+                int x = index % Width;
+                int y = index / Width;
+                MaterialType type = cells[index];
+
+                if (!MaterialProperties.IsSimulated(type)) continue;
+
+                MaterialType below = Get(x, y + 1);
+                bool canPotentiallyFall = (below == MaterialType.Air || MaterialProperties.CanDisplace(type, below));
+                bool hasVelocity = velocities[index].sqrMagnitude > VelocityThreshold * VelocityThreshold;
+                bool isSettling = settleCounters[index] < FramesToSettle;
+
+                if (canPotentiallyFall) b.canFall++;
+                if (hasVelocity) b.hasVel++;
+                if (isSettling) b.settling++;
+            }
+            return b;
+        }
+
         // Check if position is within bounds
         public bool InBounds(int x, int y)
         {
@@ -215,9 +306,16 @@ namespace GoldRush.Simulation
             // Clear update flags
             System.Array.Clear(updatedThisFrame, 0, updatedThisFrame.Length);
 
-            // Process only active cells
+            // Process clusters first (they move as units)
+            clusterManager.Update();
+
+            // Process only active single cells (skip cells that are part of clusters)
             foreach (int index in activeSet)
             {
+                // Skip cells that are part of clusters - ClusterManager handles them
+                if (clusterIDs[index] != 0)
+                    continue;
+
                 int x = index % Width;
                 int y = index / Width;
                 UpdateCell(x, y);
@@ -255,8 +353,31 @@ namespace GoldRush.Simulation
 
             bool moved = false;
 
-            // First, try velocity-based movement (use ray casting for high speeds)
+            // Apply gravity to velocity (unified physics system)
             Vector2 vel = velocities[index];
+
+            // Snappy start: if particle is at rest and can fall, give it initial push
+            // Only apply when truly stationary (not when lift is pushing upward)
+            if (Mathf.Abs(vel.y) < 0.1f)
+            {
+                MaterialType below = Get(x, y + 1);
+                bool canFall = (below == MaterialType.Air || MaterialProperties.CanDisplace(type, below));
+                if (canFall)
+                {
+                    vel.y = 1f;  // Initial downward velocity for immediate movement
+                }
+            }
+
+            // Apply gravity (always pulls down)
+            vel.y += GameSettings.SimGravity;
+
+            // Cap at terminal velocity
+            if (vel.y > GameSettings.SimTerminalVelocity)
+                vel.y = GameSettings.SimTerminalVelocity;
+
+            velocities[index] = vel;
+
+            // First, try velocity-based movement (use ray casting for high speeds)
             if (vel.sqrMagnitude > VelocityThreshold * VelocityThreshold)
             {
                 float speed = vel.magnitude;
@@ -303,11 +424,11 @@ namespace GoldRush.Simulation
                 }
             }
 
-            // Skip normal falling if particle has significant upward velocity (being lifted)
+            // Skip normal falling if particle has ANY upward velocity (being lifted)
             Vector2 currentVel = velocities[index];
-            if (currentVel.y < -0.5f)
+            if (currentVel.y < 0f)
             {
-                // Particle is being pushed upward - keep active
+                // Particle is being pushed upward - keep active, don't try to fall
                 nextActiveSet.Add(index);
                 return;
             }
@@ -325,12 +446,21 @@ namespace GoldRush.Simulation
             // Handle settling - if didn't move, manage sleep state
             if (!moved)
             {
+                // Decay velocity when blocked (particle couldn't move)
+                Vector2 remainingVel = velocities[index];
+                if (remainingVel.sqrMagnitude > 0)
+                {
+                    remainingVel *= VelocityFriction;
+                    if (remainingVel.sqrMagnitude < VelocityThreshold * VelocityThreshold)
+                        remainingVel = Vector2.zero;
+                    velocities[index] = remainingVel;
+                }
+
                 // Check if particle could potentially fall (don't sleep if space below)
                 MaterialType below = Get(x, y + 1);
                 bool canPotentiallyFall = (below == MaterialType.Air || MaterialProperties.CanDisplace(type, below));
 
                 // Check if particle still has velocity or hasn't settled yet
-                Vector2 remainingVel = velocities[index];
                 if (canPotentiallyFall ||
                     remainingVel.sqrMagnitude > VelocityThreshold * VelocityThreshold ||
                     settleCounters[index] < FramesToSettle)
@@ -466,11 +596,16 @@ namespace GoldRush.Simulation
                 cells[toY * Width + toX] = type;
                 MarkUpdated(toX, toY);
 
-                // ActiveSet management: add new position, wake neighbors at source
+                // ActiveSet management: add new position
                 int toIndex = toY * Width + toX;
                 nextActiveSet.Add(toIndex);
                 settleCounters[toIndex] = 0;
-                WakeNeighborsAt(fromX, fromY);  // Neighbors might fall into vacated space
+
+                // Only wake cells that could actually fall into the vacated space
+                // (above and diagonal-above, not sideways or below)
+                WakeCell(fromX, fromY - 1);      // Directly above
+                WakeCell(fromX - 1, fromY - 1);  // Diagonal above-left
+                WakeCell(fromX + 1, fromY - 1);  // Diagonal above-right
 
                 return true;
             }
@@ -521,7 +656,11 @@ namespace GoldRush.Simulation
                 // ActiveSet management
                 nextActiveSet.Add(toIndex);
                 settleCounters[toIndex] = 0;
-                WakeNeighborsAt(fromX, fromY);  // Neighbors might fall into vacated space
+
+                // Only wake cells above that could fall into vacated space
+                WakeCell(fromX, fromY - 1);
+                WakeCell(fromX - 1, fromY - 1);
+                WakeCell(fromX + 1, fromY - 1);
 
                 return true;
             }
@@ -639,7 +778,11 @@ namespace GoldRush.Simulation
                 // ActiveSet management
                 nextActiveSet.Add(toIndex);
                 settleCounters[toIndex] = 0;
-                WakeNeighborsAt(fromX, fromY);
+
+                // Only wake cells above that could fall into vacated space
+                WakeCell(fromX, fromY - 1);
+                WakeCell(fromX - 1, fromY - 1);
+                WakeCell(fromX + 1, fromY - 1);
 
                 return true;
             }

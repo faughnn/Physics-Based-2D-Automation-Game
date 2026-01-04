@@ -75,16 +75,22 @@ namespace GoldRush.Building
             {
                 case BuildType.Belt:
                 case BuildType.Wall:
+                case BuildType.FilterBelt:
                     return GameSettings.SubGridToWorld(gridPos.x, gridPos.y);
                 case BuildType.Shaker:
                     return GameSettings.ShakerGridToWorld(gridPos.x, gridPos.y);
                 case BuildType.Lift:
                 case BuildType.Blower:
-                case BuildType.StampMill:
-                case BuildType.RollerCrusher:
-                case BuildType.JawCrusher:
+                case BuildType.SmallCrusher:
+                case BuildType.Grinder:
                     return GameSettings.InfraGridToWorld(gridPos.x, gridPos.y);
+                case BuildType.BigCrusher:
+                    // BigCrusher is 2 cells wide, offset by half cell
+                    Vector2 bigPos = GameSettings.InfraGridToWorld(gridPos.x, gridPos.y);
+                    bigPos.x += GameSettings.InfraGridSize / 2f / GameSettings.PixelsPerUnit;
+                    return bigPos;
                 case BuildType.GoldStore:
+                case BuildType.Smelter:
                     Vector2 pos = GameSettings.GridToWorld(gridPos.x, gridPos.y);
                     pos.x += GameSettings.GridSize / 2f / GameSettings.PixelsPerUnit;
                     return pos;
@@ -125,6 +131,26 @@ namespace GoldRush.Building
                 case BuildType.Blower:
                     // 32x32 blower preview (horizontal lift)
                     sr.sprite = SpriteGenerator.CreateHollowBlowerSprite(GameSettings.InfraGridSize, GameSettings.BlowerColor, directionPositive);
+                    break;
+                case BuildType.FilterBelt:
+                    // 16x16 filter belt preview
+                    sr.sprite = SpriteGenerator.CreateArrowSprite(GameSettings.BeltSize, GameSettings.BeltSize, new Color(0.3f, 0.3f, 0.5f), true, directionPositive);
+                    break;
+                case BuildType.BigCrusher:
+                    // 64x32 big crusher preview (2 cells wide)
+                    sr.sprite = SpriteGenerator.CreateSolidSprite(GameSettings.InfraGridSize * 2, GameSettings.InfraGridSize, new Color(0.35f, 0.35f, 0.4f));
+                    break;
+                case BuildType.SmallCrusher:
+                    // 32x32 small crusher preview
+                    sr.sprite = SpriteGenerator.CreateSolidSprite(GameSettings.InfraGridSize, GameSettings.InfraGridSize, new Color(0.4f, 0.35f, 0.35f));
+                    break;
+                case BuildType.Grinder:
+                    // 32x32 grinder preview
+                    sr.sprite = SpriteGenerator.CreateSolidSprite(GameSettings.InfraGridSize, GameSettings.InfraGridSize, new Color(0.6f, 0.55f, 0.5f));
+                    break;
+                case BuildType.Smelter:
+                    // 64x32 smelter preview (2 cells wide)
+                    sr.sprite = SpriteGenerator.CreateSolidSprite(GameSettings.GridSize * 2, GameSettings.GridSize, new Color(0.5f, 0.25f, 0.15f));
                     break;
                 default:
                     Destroy(preview);

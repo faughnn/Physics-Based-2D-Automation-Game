@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using GoldRush.Core;
 using GoldRush.Infrastructure;
 using GoldRush.Simulation;
+using GoldRush.UI;
 
 namespace GoldRush.Building
 {
@@ -11,13 +12,15 @@ namespace GoldRush.Building
         None,
         Wall,
         Belt,
+        FilterBelt,
         Lift,
         Shaker,
         GoldStore,
-        StampMill,
-        RollerCrusher,
-        JawCrusher,
-        Blower
+        BigCrusher,
+        SmallCrusher,
+        Blower,
+        Grinder,
+        Smelter
     }
 
     public class BuildSystem : MonoBehaviour
@@ -111,18 +114,18 @@ namespace GoldRush.Building
             Debug.Log($"Cleaned up {toRemove.Count} ghost entries");
         }
 
-        // Returns true if this build type uses the infra grid (32x32) - Lift, Blower
+        // Returns true if this build type uses the infra grid (32x32) - Lift, Blower, Grinder, Crushers
         private bool UsesInfraGrid(BuildType type)
         {
             return type == BuildType.Lift || type == BuildType.Blower ||
-                   type == BuildType.StampMill || type == BuildType.RollerCrusher ||
-                   type == BuildType.JawCrusher;
+                   type == BuildType.BigCrusher || type == BuildType.SmallCrusher ||
+                   type == BuildType.Grinder;
         }
 
-        // Returns true if this build type uses the sub-grid (16x16) - Belt, Wall
+        // Returns true if this build type uses the sub-grid (16x16) - Belt, Wall, FilterBelt
         private bool UsesSubGrid(BuildType type)
         {
-            return type == BuildType.Belt || type == BuildType.Wall;
+            return type == BuildType.Belt || type == BuildType.Wall || type == BuildType.FilterBelt;
         }
 
         // Returns true if this build type uses the shaker grid (32x16) - Shaker
@@ -138,6 +141,22 @@ namespace GoldRush.Building
             {
                 DirectionPositive = !DirectionPositive;
                 Debug.Log($"Direction: {(DirectionPositive ? "Right/Up" : "Left/Down")}");
+            }
+
+            // Open filter selection with F (for FilterBelt)
+            if (Input.GetKeyDown(KeyCode.F) && CurrentBuildType == BuildType.FilterBelt)
+            {
+                if (FilterSelectionUI.Instance != null)
+                {
+                    FilterSelectionUI.Instance.Toggle();
+                }
+                return;
+            }
+
+            // Don't process placement if filter selection is open
+            if (FilterSelectionUI.Instance != null && FilterSelectionUI.Instance.IsOpen)
+            {
+                return;
             }
 
             // Cancel with Escape
@@ -245,6 +264,10 @@ namespace GoldRush.Building
                 case BuildType.Belt:
                     placed = Belt.Create(gridPos.x, gridPos.y, DirectionPositive, infrastructureParent);
                     break;
+                case BuildType.FilterBelt:
+                    var blockedMats = FilterSelectionUI.Instance?.SelectedMaterials;
+                    placed = FilterBelt.Create(gridPos.x, gridPos.y, DirectionPositive, infrastructureParent, blockedMats);
+                    break;
                 case BuildType.Lift:
                     placed = Lift.Create(gridPos.x, gridPos.y, DirectionPositive, infrastructureParent);
                     break;
@@ -256,23 +279,26 @@ namespace GoldRush.Building
                     // Gold store takes 2 cells
                     placedInfrastructure[new Vector2Int(gridPos.x + 1, gridPos.y)] = placed;
                     break;
-                case BuildType.StampMill:
-                    placed = StampMill.Create(gridPos.x, gridPos.y, infrastructureParent);
-                    // Stamp mill takes 2 cells vertically
-                    placedInfrastructure[new Vector2Int(gridPos.x, gridPos.y + 1)] = placed;
-                    break;
-                case BuildType.RollerCrusher:
-                    placed = RollerCrusher.Create(gridPos.x, gridPos.y, infrastructureParent);
-                    // Roller crusher takes 2 cells horizontally
+                case BuildType.BigCrusher:
+                    placed = BigCrusher.Create(gridPos.x, gridPos.y, infrastructureParent);
+                    // Big crusher takes 2x2 cells (64x64 pixels)
                     placedInfrastructure[new Vector2Int(gridPos.x + 1, gridPos.y)] = placed;
-                    break;
-                case BuildType.JawCrusher:
-                    placed = JawCrusher.Create(gridPos.x, gridPos.y, infrastructureParent);
-                    // Jaw crusher takes 2 cells vertically
                     placedInfrastructure[new Vector2Int(gridPos.x, gridPos.y + 1)] = placed;
+                    placedInfrastructure[new Vector2Int(gridPos.x + 1, gridPos.y + 1)] = placed;
+                    break;
+                case BuildType.SmallCrusher:
+                    placed = SmallCrusher.Create(gridPos.x, gridPos.y, infrastructureParent);
                     break;
                 case BuildType.Blower:
                     placed = Blower.Create(gridPos.x, gridPos.y, DirectionPositive, infrastructureParent);
+                    break;
+                case BuildType.Grinder:
+                    placed = Grinder.Create(gridPos.x, gridPos.y, infrastructureParent);
+                    break;
+                case BuildType.Smelter:
+                    placed = Smelter.Create(gridPos.x, gridPos.y, infrastructureParent);
+                    // Smelter takes 2 cells horizontally (like GoldStore)
+                    placedInfrastructure[new Vector2Int(gridPos.x + 1, gridPos.y)] = placed;
                     break;
             }
 
@@ -409,13 +435,14 @@ namespace GoldRush.Building
             }
 
             // Handle multi-cell buildings
-            if (type == BuildType.GoldStore || type == BuildType.RollerCrusher)
+            if (type == BuildType.GoldStore || type == BuildType.Smelter)
             {
                 width *= 2; // 2 cells wide
             }
-            else if (type == BuildType.StampMill || type == BuildType.JawCrusher)
+            else if (type == BuildType.BigCrusher)
             {
-                height *= 2; // 2 cells tall
+                width *= 2;  // 2 cells wide
+                height *= 2; // 2 cells tall (square)
             }
 
             // Return bounds centered on worldPos

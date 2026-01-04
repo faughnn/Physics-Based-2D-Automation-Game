@@ -10,8 +10,6 @@ namespace GoldRush.Infrastructure
         public int GridY { get; private set; }
         public bool BlowsRight { get; private set; }
 
-        private float targetSpeed;
-        private float blowAcceleration;
         private float accelerateTimer;
         private const float AccelerateInterval = 0.016f;  // Apply acceleration every frame (~60fps)
 
@@ -44,8 +42,6 @@ namespace GoldRush.Infrastructure
             blower.GridX = gridX;
             blower.GridY = gridY;
             blower.BlowsRight = blowsRight;
-            blower.targetSpeed = blowsRight ? GameSettings.LiftSpeed : -GameSettings.LiftSpeed;
-            blower.blowAcceleration = GameSettings.LiftAcceleration;
             blower.InitializeGridCoords();
 
             return blowerGO;
@@ -81,33 +77,15 @@ namespace GoldRush.Infrastructure
             // No blocking to unregister
         }
 
-        private const int WakeZoneBuffer = 8;  // Wake zone extends 8 cells beyond infrastructure
-
         private void Update()
         {
             if (SimulationWorld.Instance == null) return;
-
-            var grid = SimulationWorld.Instance.Grid;
-
-            // Wake all particles in and around the blower (ActiveSet optimization)
-            for (int y = simGridMinY - WakeZoneBuffer; y <= simGridMaxY + WakeZoneBuffer; y++)
-            {
-                for (int x = simGridMinX - WakeZoneBuffer; x <= simGridMaxX + WakeZoneBuffer; x++)
-                {
-                    if (MaterialProperties.IsSimulated(grid.Get(x, y)))
-                    {
-                        grid.WakeCell(x, y);
-                    }
-                }
-            }
 
             accelerateTimer += Time.deltaTime;
             if (accelerateTimer < AccelerateInterval) return;
             accelerateTimer = 0f;
 
-            // targetSpeed is already set correctly based on direction in Create()
-            // positive = right, negative = left
-            float targetVelX = targetSpeed;
+            var grid = SimulationWorld.Instance.Grid;
 
             for (int y = simGridMinY; y <= simGridMaxY; y++)
             {
@@ -120,9 +98,12 @@ namespace GoldRush.Infrastructure
                         // Get current velocity
                         Vector2 vel = grid.GetVelocity(x, y);
 
-                        // Accelerate toward target horizontally
-                        float accelStep = blowAcceleration * AccelerateInterval;
-                        vel.x = Mathf.MoveTowards(vel.x, targetVelX, accelStep);
+                        // Direct addition: push in blow direction
+                        float blowDir = BlowsRight ? 1f : -1f;
+                        vel.x += blowDir * GameSettings.SimBlowerForce;
+
+                        // Cap at terminal velocity
+                        vel.x = Mathf.Clamp(vel.x, -GameSettings.SimTerminalVelocity, GameSettings.SimTerminalVelocity);
 
                         grid.SetVelocity(x, y, vel);
                     }

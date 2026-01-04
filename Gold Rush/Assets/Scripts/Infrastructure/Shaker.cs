@@ -111,8 +111,6 @@ namespace GoldRush.Infrastructure
             }
         }
 
-        private const int WakeZoneBuffer = 8;  // Wake zone extends 8 cells beyond infrastructure
-
         private void Update()
         {
             // Vibrate effect
@@ -120,19 +118,6 @@ namespace GoldRush.Infrastructure
             transform.position = originalPosition + new Vector2(xOffset, 0);
 
             if (SimulationWorld.Instance == null) return;
-            var grid = SimulationWorld.Instance.Grid;
-
-            // Wake all particles in and around the shaker (ActiveSet optimization)
-            for (int y = simGridY - 16 - WakeZoneBuffer; y <= simGridY + ShakerBodyDepth + WakeZoneBuffer; y++)
-            {
-                for (int x = simGridMinX - WakeZoneBuffer; x <= simGridMaxX + WakeZoneBuffer; x++)
-                {
-                    if (MaterialProperties.IsSimulated(grid.Get(x, y)))
-                    {
-                        grid.WakeCell(x, y);
-                    }
-                }
-            }
 
             // Process surface (push slag/sand, intake wet sand)
             surfaceTimer += Time.deltaTime;
@@ -229,15 +214,15 @@ namespace GoldRush.Infrastructure
                     {
                         if (dy == ShakerBodyDepth)
                         {
-                            // At bottom of shaker: wet sand becomes gold and exits
-                            int goldY = simGridY + ShakerBodyDepth + 1;
+                            // At bottom of shaker: wet sand becomes concentrate and exits
+                            int outputY = simGridY + ShakerBodyDepth + 1;
 
-                            // Only convert if we can spawn gold below
-                            if (grid.Get(x, goldY) == MaterialType.Air)
+                            // Only convert if we can spawn concentrate below
+                            if (grid.Get(x, outputY) == MaterialType.Air)
                             {
                                 grid.Set(x, y, MaterialType.Air);
-                                grid.Set(x, goldY, MaterialType.Gold);
-                                grid.WakeCell(x, goldY);  // Wake the gold so it falls
+                                grid.Set(x, outputY, MaterialType.Concentrate);
+                                grid.WakeCell(x, outputY);  // Wake the concentrate so it falls
                             }
                             // Otherwise wet sand waits at bottom until space opens
                         }

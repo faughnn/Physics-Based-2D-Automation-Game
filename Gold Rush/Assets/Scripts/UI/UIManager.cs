@@ -13,6 +13,8 @@ namespace GoldRush.UI
         public BuildMenuUI BuildMenu { get; private set; }
         public GoldCounterUI GoldCounter { get; private set; }
         public DebugGridOverlay GridOverlay { get; private set; }
+        public MaterialInspector MaterialInspector { get; private set; }
+        public FilterSelectionUI FilterSelection { get; private set; }
 
         private void Awake()
         {
@@ -32,6 +34,8 @@ namespace GoldRush.UI
             CreateGoldCounter();
             CreateInstructions();
             CreateGridOverlay();
+            CreateMaterialInspector();
+            CreateFilterSelection();
         }
 
         private void CreateEventSystem()
@@ -92,7 +96,7 @@ namespace GoldRush.UI
             rect.anchorMax = new Vector2(0, 0);
             rect.pivot = new Vector2(0, 0);
             rect.anchoredPosition = new Vector2(10, 10);
-            rect.sizeDelta = new Vector2(400, 150);
+            rect.sizeDelta = new Vector2(400, 185);
 
             Text text = instructionsGO.AddComponent<Text>();
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -104,6 +108,8 @@ namespace GoldRush.UI
                         "Right Click - Delete\n" +
                         "Tab - Build Menu\n" +
                         "Q/E - Change Direction\n" +
+                        "G - Pickup Tool (grab/move)\n" +
+                        "Alt - Inspect Material\n" +
                         "Esc - Cancel Build";
 
             // Add shadow for readability
@@ -118,6 +124,31 @@ namespace GoldRush.UI
             // Don't parent to canvas - this is a world-space overlay
             GridOverlay = overlayGO.AddComponent<DebugGridOverlay>();
             GridOverlay.Initialize();
+        }
+
+        private void CreateMaterialInspector()
+        {
+            GameObject inspectorGO = new GameObject("MaterialInspector");
+            inspectorGO.transform.SetParent(MainCanvas.transform);
+
+            MaterialInspector = inspectorGO.AddComponent<MaterialInspector>();
+            MaterialInspector.Initialize();
+        }
+
+        private void CreateFilterSelection()
+        {
+            GameObject filterGO = new GameObject("FilterSelection");
+            filterGO.transform.SetParent(MainCanvas.transform);
+
+            // Add RectTransform that fills the canvas so child panel can center properly
+            RectTransform rect = filterGO.AddComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            FilterSelection = filterGO.AddComponent<FilterSelectionUI>();
+            FilterSelection.Initialize();
         }
     }
 }

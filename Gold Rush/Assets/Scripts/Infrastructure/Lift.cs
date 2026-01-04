@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 using GoldRush.Core;
 using GoldRush.Simulation;
 
@@ -10,8 +11,6 @@ namespace GoldRush.Infrastructure
         public int GridY { get; private set; }
         public bool MovesUp { get; private set; }
 
-        private float targetSpeed;
-        private float liftAcceleration;
         private float accelerateTimer;
         private const float AccelerateInterval = 0.016f;  // Apply acceleration every frame (~60fps)
 
@@ -44,8 +43,6 @@ namespace GoldRush.Infrastructure
             lift.GridX = gridX;
             lift.GridY = gridY;
             lift.MovesUp = movesUp;
-            lift.targetSpeed = movesUp ? GameSettings.LiftSpeed : -GameSettings.LiftSpeed;
-            lift.liftAcceleration = GameSettings.LiftAcceleration;
             lift.InitializeGridCoords();
 
             return liftGO;
@@ -73,37 +70,54 @@ namespace GoldRush.Infrastructure
             // No blocking to unregister - lift is open
         }
 
-        private const int WakeZoneBuffer = 8;  // Wake zone extends 8 cells beyond infrastructure
+        private HashSet<uint> processedClusters = new HashSet<uint>();
 
         private void Update()
         {
             if (SimulationWorld.Instance == null) return;
 
-            var grid = SimulationWorld.Instance.Grid;
-
-            // Wake all particles in and around the lift (ActiveSet optimization)
-            for (int y = simGridMinY - WakeZoneBuffer; y <= simGridMaxY + WakeZoneBuffer; y++)
-            {
-                for (int x = simGridMinX - WakeZoneBuffer; x <= simGridMaxX + WakeZoneBuffer; x++)
-                {
-                    if (MaterialProperties.IsSimulated(grid.Get(x, y)))
-                    {
-                        grid.WakeCell(x, y);
-                    }
-                }
-            }
-
             accelerateTimer += Time.deltaTime;
             if (accelerateTimer < AccelerateInterval) return;
             accelerateTimer = 0f;
 
-            // Target velocity in grid coords (negative Y = up)
-            float targetVelY = MovesUp ? -targetSpeed : targetSpeed;
+            var grid = SimulationWorld.Instance.Grid;
+            var clusterMgr = grid.ClusterManager;
+
+            // Track which clusters we've already processed this frame
+            processedClusters.Clear();
 
             for (int y = simGridMinY; y <= simGridMaxY; y++)
             {
                 for (int x = simGridMinX; x <= simGridMaxX; x++)
                 {
+                    // Check for cluster first
+                    uint clusterId = grid.GetClusterID(x, y);
+                    if (clusterId != 0)
+                    {
+                        // Only process each cluster once
+                        if (!processedClusters.Contains(clusterId))
+                        {
+                            processedClusters.Add(clusterId);
+
+                            // Get cluster data and apply velocity
+                            var clusterData = clusterMgr.GetCluster(clusterId);
+                            if (clusterData.HasValue)
+                            {
+                                Vector2 vel = clusterData.Value.Velocity;
+
+                                // Direct addition: push in lift direction
+                                float liftDir = MovesUp ? -1f : 1f;  // Negative Y = up in grid coords
+                                vel.y += liftDir * GameSettings.SimLiftForce;
+
+                                // Cap at terminal velocity
+                                vel.y = Mathf.Clamp(vel.y, -GameSettings.SimTerminalVelocity, GameSettings.SimTerminalVelocity);
+
+                                clusterMgr.SetClusterVelocity(clusterId, vel);
+                            }
+                        }
+                        continue;  // Skip single-cell processing for clustered cells
+                    }
+
                     MaterialType type = grid.Get(x, y);
 
                     if (MaterialProperties.IsSimulated(type))
@@ -111,15 +125,12 @@ namespace GoldRush.Infrastructure
                         // Get current velocity
                         Vector2 vel = grid.GetVelocity(x, y);
 
-                        // Accelerate toward target - use strong acceleration
-                        float accelStep = liftAcceleration * AccelerateInterval;
-                        vel.y = Mathf.MoveTowards(vel.y, targetVelY, accelStep);
+                        // Direct addition: push in lift direction
+                        float liftDir = MovesUp ? -1f : 1f;  // Negative Y = up in grid coords
+                        vel.y += liftDir * GameSettings.SimLiftForce;
 
-                        // Ensure minimum upward velocity while in lift
-                        if (MovesUp && vel.y > -2f)
-                        {
-                            vel.y = -2f;  // Minimum upward velocity
-                        }
+                        // Cap at terminal velocity
+                        vel.y = Mathf.Clamp(vel.y, -GameSettings.SimTerminalVelocity, GameSettings.SimTerminalVelocity);
 
                         grid.SetVelocity(x, y, vel);
                     }
@@ -142,8 +153,10 @@ namespace GoldRush.Infrastructure
             Rigidbody2D rb = other.GetComponent<Rigidbody2D>();
             if (rb != null)
             {
-                float currentY = rb.linearVelocity.y;
-                float newY = Mathf.MoveTowards(currentY, targetSpeed, liftAcceleration * Time.fixedDeltaTime);
+                // Direct addition: push in lift direction (Unity Y is up = positive)
+                float liftDir = MovesUp ? 1f : -1f;
+                float newY = rb.linearVelocity.y + liftDir * GameSettings.SimLiftForce * 60f; // Scale for Unity physics
+                newY = Mathf.Clamp(newY, -GameSettings.SimTerminalVelocity * 60f, GameSettings.SimTerminalVelocity * 60f);
                 rb.linearVelocity = new Vector2(rb.linearVelocity.x, newY);
             }
         }

@@ -49,7 +49,34 @@ namespace GoldRush.Simulation
                 for (int gx = 0; gx < grid.Width; gx++)
                 {
                     MaterialType type = grid.Get(gx, gy);
-                    Color32 color = MaterialProperties.GetColor(type);
+                    Color32 color;
+
+                    // For terrain cells, show the vein color so players can see what's inside
+                    if (type == MaterialType.Terrain && SimulationWorld.Instance != null)
+                    {
+                        MaterialType veinType = SimulationWorld.Instance.GetVeinType(gx, gy);
+                        if (veinType != MaterialType.Sand)
+                        {
+                            // Blend vein color with terrain for visibility
+                            Color32 terrainColor = MaterialProperties.GetColor(MaterialType.Terrain);
+                            Color32 veinColor = MaterialProperties.GetColor(veinType);
+                            // Tint terrain with vein color (60% terrain, 40% vein)
+                            color = new Color32(
+                                (byte)((terrainColor.r * 0.6f) + (veinColor.r * 0.4f)),
+                                (byte)((terrainColor.g * 0.6f) + (veinColor.g * 0.4f)),
+                                (byte)((terrainColor.b * 0.6f) + (veinColor.b * 0.4f)),
+                                255
+                            );
+                        }
+                        else
+                        {
+                            color = MaterialProperties.GetColor(type);
+                        }
+                    }
+                    else
+                    {
+                        color = MaterialProperties.GetColor(type);
+                    }
 
                     // Fill the cell pixels (cellPixelSize x cellPixelSize block)
                     // Note: texture Y is flipped (0 at bottom, Height at top)

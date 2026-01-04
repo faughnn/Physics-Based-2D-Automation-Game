@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 using GoldRush.Core;
 using GoldRush.Simulation;
 
@@ -102,32 +103,26 @@ namespace GoldRush.Infrastructure
             }
         }
 
-        private const int WakeZoneBuffer = 8;  // Wake zone extends 8 cells beyond infrastructure
+        private HashSet<uint> processedClusters = new HashSet<uint>();
+        private const float BeltVelocity = 2f;  // Horizontal velocity to apply to clusters
 
         private void Update()
         {
             if (SimulationWorld.Instance == null) return;
-
-            var grid = SimulationWorld.Instance.Grid;
-
-            // Wake all particles in and around the belt (ActiveSet optimization)
-            for (int y = simGridY - 8 - WakeZoneBuffer; y <= simGridY + WakeZoneBuffer; y++)
-            {
-                for (int x = simGridMinX - WakeZoneBuffer; x <= simGridMaxX + WakeZoneBuffer; x++)
-                {
-                    if (MaterialProperties.IsSimulated(grid.Get(x, y)))
-                    {
-                        grid.WakeCell(x, y);
-                    }
-                }
-            }
 
             // Move particles horizontally on timer
             moveTimer += Time.deltaTime;
             if (moveTimer < MoveInterval) return;
             moveTimer = 0f;
 
+            var grid = SimulationWorld.Instance.Grid;
+            var clusterMgr = grid.ClusterManager;
+
             int direction = MovesRight ? 1 : -1;
+            float targetVelX = MovesRight ? BeltVelocity : -BeltVelocity;
+
+            // Track which clusters we've already processed this frame
+            processedClusters.Clear();
 
             // Process in the direction of movement to avoid double-moving
             int startX = MovesRight ? simGridMaxX : simGridMinX;
@@ -140,6 +135,29 @@ namespace GoldRush.Infrastructure
                 for (int dy = -8; dy <= 0; dy++)
                 {
                     int y = simGridY + dy;
+
+                    // Check for cluster first
+                    uint clusterId = grid.GetClusterID(x, y);
+                    if (clusterId != 0)
+                    {
+                        // Only process each cluster once
+                        if (!processedClusters.Contains(clusterId))
+                        {
+                            processedClusters.Add(clusterId);
+
+                            // Get cluster data and apply horizontal velocity
+                            var clusterData = clusterMgr.GetCluster(clusterId);
+                            if (clusterData.HasValue)
+                            {
+                                Vector2 vel = clusterData.Value.Velocity;
+                                // Set horizontal velocity toward belt direction
+                                vel.x = Mathf.MoveTowards(vel.x, targetVelX, BeltVelocity);
+                                clusterMgr.SetClusterVelocity(clusterId, vel);
+                            }
+                        }
+                        continue;  // Skip single-cell processing for clustered cells
+                    }
+
                     MaterialType type = grid.Get(x, y);
 
                     if (MaterialProperties.IsSimulated(type))

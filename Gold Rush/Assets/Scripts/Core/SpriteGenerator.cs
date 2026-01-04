@@ -421,5 +421,49 @@ namespace GoldRush.Core
             spriteCache[key] = sprite;
             return sprite;
         }
+
+        // Create a solid rectangular sprite (for previews of various sizes)
+        public static Sprite CreateSolidSprite(int width, int height, Color color)
+        {
+            string key = $"Solid_{width}x{height}_{ColorUtility.ToHtmlStringRGB(color)}";
+
+            if (spriteCache.TryGetValue(key, out Sprite cached))
+            {
+                return cached;
+            }
+
+            Texture2D texture = new Texture2D(width, height);
+            texture.filterMode = FilterMode.Point;
+
+            Color[] pixels = new Color[width * height];
+
+            // Fill with solid color
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                pixels[i] = color;
+            }
+
+            // Add a subtle border (slightly darker)
+            Color borderColor = color * 0.7f;
+            borderColor.a = 1f;
+            for (int x = 0; x < width; x++)
+            {
+                pixels[0 * width + x] = borderColor;                // Bottom
+                pixels[(height - 1) * width + x] = borderColor;     // Top
+            }
+            for (int y = 0; y < height; y++)
+            {
+                pixels[y * width + 0] = borderColor;                // Left
+                pixels[y * width + (width - 1)] = borderColor;      // Right
+            }
+
+            texture.SetPixels(pixels);
+            texture.Apply();
+
+            Sprite sprite = Sprite.Create(texture, new Rect(0, 0, width, height),
+                                         new Vector2(0.5f, 0.5f), GameSettings.PixelsPerUnit);
+            spriteCache[key] = sprite;
+            return sprite;
+        }
     }
 }

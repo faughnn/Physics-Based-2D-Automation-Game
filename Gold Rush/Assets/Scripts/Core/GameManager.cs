@@ -20,6 +20,7 @@ namespace GoldRush.Core
         public BuildSystem BuildSystem { get; private set; }
         public UIManager UIManager { get; private set; }
         public SimulationWorld SimulationWorld { get; private set; }
+        public PickupTool PickupTool { get; private set; }
 
         private Camera mainCamera;
 
@@ -57,6 +58,9 @@ namespace GoldRush.Core
 
             // Initialize UI
             InitializeUI();
+
+            // Initialize pickup tool
+            InitializePickupTool();
 
             // Setup camera
             SetupCamera();
@@ -104,6 +108,13 @@ namespace GoldRush.Core
             GameObject uiGO = new GameObject("UIManager");
             UIManager = uiGO.AddComponent<UIManager>();
             UIManager.Initialize();
+        }
+
+        private void InitializePickupTool()
+        {
+            GameObject pickupGO = new GameObject("PickupTool");
+            PickupTool = pickupGO.AddComponent<PickupTool>();
+            PickupTool.Initialize();
         }
 
         private void GenerateWorld()
