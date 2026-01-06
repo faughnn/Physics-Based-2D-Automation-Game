@@ -174,16 +174,10 @@ namespace GoldRush.Player
         {
             if (BuildSystem.Instance == null) return;
 
-            // Try all grid types for deletion (different buildings use different grids)
-            Vector2Int subGrid = GameSettings.WorldToSubGrid(worldPos);      // Belt, Wall (16x16)
-            Vector2Int infraGrid = GameSettings.WorldToInfraGrid(worldPos);  // Lift, Blower (32x32)
-            Vector2Int shakerGrid = GameSettings.WorldToShakerGrid(worldPos); // Shaker (32x16)
-            Vector2Int mainGrid = GameSettings.WorldToGrid(worldPos);         // GoldStore
-
-            if (BuildSystem.Instance.TryDeleteAt(subGrid)) return;
-            if (BuildSystem.Instance.TryDeleteAt(infraGrid)) return;
-            if (BuildSystem.Instance.TryDeleteAt(shakerGrid)) return;
-            BuildSystem.Instance.TryDeleteAt(mainGrid);
+            // Try each unique grid type for deletion
+            if (BuildSystem.Instance.TryDeleteAt(PlacementGrid.Sub.FromWorld(worldPos))) return;
+            if (BuildSystem.Instance.TryDeleteAt(PlacementGrid.Main.FromWorld(worldPos))) return;
+            BuildSystem.Instance.TryDeleteAt(PlacementGrid.Shaker.FromWorld(worldPos));
         }
 
         private void DeleteInLine(Vector2 startWorld, Vector2 endWorld)

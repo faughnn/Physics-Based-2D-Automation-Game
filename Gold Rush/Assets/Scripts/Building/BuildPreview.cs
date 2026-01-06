@@ -71,86 +71,77 @@ namespace GoldRush.Building
 
         private Vector2 GetWorldPosForType(Vector2Int gridPos, BuildType type)
         {
-            switch (type)
+            if (!BuildTypeData.TryGet(type, out var info))
             {
-                case BuildType.Belt:
-                case BuildType.Wall:
-                case BuildType.FilterBelt:
-                    return GameSettings.SubGridToWorld(gridPos.x, gridPos.y);
-                case BuildType.Shaker:
-                    return GameSettings.ShakerGridToWorld(gridPos.x, gridPos.y);
-                case BuildType.Lift:
-                case BuildType.Blower:
-                case BuildType.SmallCrusher:
-                case BuildType.Grinder:
-                    return GameSettings.InfraGridToWorld(gridPos.x, gridPos.y);
-                case BuildType.BigCrusher:
-                    // BigCrusher is 2 cells wide, offset by half cell
-                    Vector2 bigPos = GameSettings.InfraGridToWorld(gridPos.x, gridPos.y);
-                    bigPos.x += GameSettings.InfraGridSize / 2f / GameSettings.PixelsPerUnit;
-                    return bigPos;
-                case BuildType.GoldStore:
-                case BuildType.Smelter:
-                    Vector2 pos = GameSettings.GridToWorld(gridPos.x, gridPos.y);
-                    pos.x += GameSettings.GridSize / 2f / GameSettings.PixelsPerUnit;
-                    return pos;
-                default:
-                    return GameSettings.GridToWorld(gridPos.x, gridPos.y);
+                return GameSettings.GridToWorld(gridPos.x, gridPos.y);
             }
+
+            Vector2 pos = info.Grid.ToWorld(gridPos.x, gridPos.y);
+
+            // Offset for multi-cell buildings (they're centered on the span)
+            if (info.CellSpanX > 1)
+            {
+                pos.x += (info.CellSpanX - 1) * info.Grid.CellWidth / 2f / GameSettings.PixelsPerUnit;
+            }
+            if (info.CellSpanY > 1)
+            {
+                pos.y -= (info.CellSpanY - 1) * info.Grid.CellHeight / 2f / GameSettings.PixelsPerUnit;
+            }
+
+            return pos;
         }
 
         private GameObject CreatePreviewObject(BuildType type, bool directionPositive)
         {
+            if (!BuildTypeData.TryGet(type, out var info))
+            {
+                return null;
+            }
+
             GameObject preview = new GameObject("Preview");
             preview.transform.SetParent(transform);
 
             SpriteRenderer sr = preview.AddComponent<SpriteRenderer>();
             sr.sortingOrder = 100; // Above everything
 
+            int w = info.VisualWidth;
+            int h = info.VisualHeight;
+
+            // Type-specific sprite creation (using metadata for sizes)
             switch (type)
             {
                 case BuildType.Wall:
-                    // 16x16 solid wall preview
-                    sr.sprite = SpriteGenerator.CreateSolidWallSprite(GameSettings.WallSize, GameSettings.WallColor);
+                    sr.sprite = SpriteGenerator.CreateSolidWallSprite(w, GameSettings.WallColor);
                     break;
                 case BuildType.Belt:
-                    // 16x16 belt preview
-                    sr.sprite = SpriteGenerator.CreateArrowSprite(GameSettings.BeltSize, GameSettings.BeltSize, GameSettings.BeltColor, true, directionPositive);
+                    sr.sprite = SpriteGenerator.CreateArrowSprite(w, h, GameSettings.BeltColor, true, directionPositive);
                     break;
                 case BuildType.Lift:
-                    // 32x32 lift preview
-                    sr.sprite = SpriteGenerator.CreateHollowLiftSprite(GameSettings.InfraGridSize, GameSettings.LiftColor, directionPositive);
+                    sr.sprite = SpriteGenerator.CreateHollowLiftSprite(w, GameSettings.LiftColor, directionPositive);
                     break;
                 case BuildType.Shaker:
-                    // 32x16 shaker preview
-                    sr.sprite = SpriteGenerator.CreateArrowSprite(GameSettings.GridSize, 16, GameSettings.ShakerColor, true, directionPositive);
+                    sr.sprite = SpriteGenerator.CreateArrowSprite(w, h, GameSettings.ShakerColor, true, directionPositive);
                     break;
                 case BuildType.GoldStore:
                     sr.sprite = SpriteGenerator.GetSprite("GoldStore");
                     break;
                 case BuildType.Blower:
-                    // 32x32 blower preview (horizontal lift)
-                    sr.sprite = SpriteGenerator.CreateHollowBlowerSprite(GameSettings.InfraGridSize, GameSettings.BlowerColor, directionPositive);
+                    sr.sprite = SpriteGenerator.CreateHollowBlowerSprite(w, GameSettings.BlowerColor, directionPositive);
                     break;
                 case BuildType.FilterBelt:
-                    // 16x16 filter belt preview
-                    sr.sprite = SpriteGenerator.CreateArrowSprite(GameSettings.BeltSize, GameSettings.BeltSize, new Color(0.3f, 0.3f, 0.5f), true, directionPositive);
+                    sr.sprite = SpriteGenerator.CreateArrowSprite(w, h, new Color(0.3f, 0.3f, 0.5f), true, directionPositive);
                     break;
                 case BuildType.BigCrusher:
-                    // 64x32 big crusher preview (2 cells wide)
-                    sr.sprite = SpriteGenerator.CreateSolidSprite(GameSettings.InfraGridSize * 2, GameSettings.InfraGridSize, new Color(0.35f, 0.35f, 0.4f));
+                    sr.sprite = SpriteGenerator.CreateSolidSprite(w, h, new Color(0.35f, 0.35f, 0.4f));
                     break;
                 case BuildType.SmallCrusher:
-                    // 32x32 small crusher preview
-                    sr.sprite = SpriteGenerator.CreateSolidSprite(GameSettings.InfraGridSize, GameSettings.InfraGridSize, new Color(0.4f, 0.35f, 0.35f));
+                    sr.sprite = SpriteGenerator.CreateSolidSprite(w, h, new Color(0.4f, 0.35f, 0.35f));
                     break;
                 case BuildType.Grinder:
-                    // 32x32 grinder preview
-                    sr.sprite = SpriteGenerator.CreateSolidSprite(GameSettings.InfraGridSize, GameSettings.InfraGridSize, new Color(0.6f, 0.55f, 0.5f));
+                    sr.sprite = SpriteGenerator.CreateSolidSprite(w, h, new Color(0.6f, 0.55f, 0.5f));
                     break;
                 case BuildType.Smelter:
-                    // 64x32 smelter preview (2 cells wide)
-                    sr.sprite = SpriteGenerator.CreateSolidSprite(GameSettings.GridSize * 2, GameSettings.GridSize, new Color(0.5f, 0.25f, 0.15f));
+                    sr.sprite = SpriteGenerator.CreateSolidSprite(w, h, new Color(0.5f, 0.25f, 0.15f));
                     break;
                 default:
                     Destroy(preview);

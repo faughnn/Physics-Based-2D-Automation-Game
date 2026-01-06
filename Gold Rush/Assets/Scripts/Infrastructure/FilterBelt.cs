@@ -1,6 +1,6 @@
 using UnityEngine;
-using UnityEngine.UI;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 using System.Collections.Generic;
 
@@ -15,9 +15,6 @@ namespace GoldRush.Infrastructure
         // Set of materials that are BLOCKED (cannot pass through)
         public HashSet<MaterialType> BlockedMaterials { get; private set; } = new HashSet<MaterialType>();
 
-        private float moveTimer;
-        private const float MoveInterval = 0.05f;
-
         private int simGridMinX, simGridMaxX, simGridY;
         private SpriteRenderer spriteRenderer;
         private GameObject filterIndicator;
@@ -28,7 +25,8 @@ namespace GoldRush.Infrastructure
             GameObject beltGO = new GameObject($"FilterBelt_{gridX}_{gridY}");
             if (parent != null) beltGO.transform.SetParent(parent);
 
-            Vector2 worldPos = GameSettings.SubGridToWorld(gridX, gridY);
+            var info = BuildTypeData.Get(BuildType.FilterBelt);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
             beltGO.transform.position = worldPos;
 
             // Main sprite - darker color to distinguish from regular belt
@@ -85,27 +83,49 @@ namespace GoldRush.Infrastructure
             Vector2 surfacePos = (Vector2)transform.position + new Vector2(0, 9f / GameSettings.PixelsPerUnit);
             Vector2Int gridPos = SimulationWorld.Instance.WorldToGrid(surfacePos);
 
-            int halfWidth = 4;
-            simGridMinX = gridPos.x - halfWidth;
-            simGridMaxX = gridPos.x + halfWidth;
+            var info = BuildTypeData.Get(BuildType.FilterBelt);
+            simGridMinX = gridPos.x - info.SimHalfWidth;
+            simGridMaxX = gridPos.x + info.SimHalfWidth;
             simGridY = gridPos.y;
 
-            UpdateFilterBlocking();
-        }
+            // Block interior cells (same as Belt.cs)
+            var grid = SimulationWorld.Instance.Grid;
+            for (int x = simGridMinX; x <= simGridMaxX; x++)
+            {
+                for (int dy = 1; dy <= 8; dy++)
+                {
+                    grid.SetInfrastructureBlocking(x, simGridY + dy, true);
+                }
+            }
 
-        private void UpdateFilterBlocking()
-        {
-            // Filter belt doesn't use grid blocking - it handles materials directly in Update
-        }
-
-        private void ClearFilterBlocking()
-        {
-            // Nothing to clear since we handle it in Update
+            // Register belt surface with filter
+            BeltSurface surface = new BeltSurface
+            {
+                MinX = simGridMinX,
+                MaxX = simGridMaxX,
+                SurfaceY = simGridY,
+                MovesRight = MovesRight,
+                Owner = this,
+                BlockedMaterials = BlockedMaterials
+            };
+            BeltVelocityManager.Instance.RegisterBeltSurface(surface);
         }
 
         private void OnDestroy()
         {
-            ClearFilterBlocking();
+            BeltVelocityManager.Instance?.UnregisterBeltSurface(this);
+
+            if (SimulationWorld.Instance != null)
+            {
+                var grid = SimulationWorld.Instance.Grid;
+                for (int x = simGridMinX; x <= simGridMaxX; x++)
+                {
+                    for (int dy = 1; dy <= 8; dy++)
+                    {
+                        grid.SetInfrastructureBlocking(x, simGridY + dy, false);
+                    }
+                }
+            }
         }
 
         private void UpdateIndicator()
@@ -160,73 +180,5 @@ namespace GoldRush.Infrastructure
             indicatorRenderer.sprite = Sprite.Create(tex, new Rect(0, 0, size, size),
                 new Vector2(0.5f, 0.5f), GameSettings.PixelsPerUnit);
         }
-
-        private HashSet<uint> processedClusters = new HashSet<uint>();
-        private const float BeltVelocity = 2f;
-
-        private void Update()
-        {
-            if (SimulationWorld.Instance == null) return;
-
-            // Move blocked materials horizontally on the belt
-            moveTimer += Time.deltaTime;
-            if (moveTimer < MoveInterval) return;
-            moveTimer = 0f;
-
-            var grid = SimulationWorld.Instance.Grid;
-            var clusterMgr = grid.ClusterManager;
-
-            int direction = MovesRight ? 1 : -1;
-            float targetVelX = MovesRight ? BeltVelocity : -BeltVelocity;
-            int startX = MovesRight ? simGridMaxX : simGridMinX;
-            int endX = MovesRight ? simGridMinX : simGridMaxX;
-            int step = MovesRight ? -1 : 1;
-
-            // Track which clusters we've already processed this frame
-            processedClusters.Clear();
-
-            for (int x = startX; MovesRight ? x >= endX : x <= endX; x += step)
-            {
-                for (int dy = -8; dy <= 0; dy++)
-                {
-                    int y = simGridY + dy;
-
-                    // Check for cluster first
-                    uint clusterId = grid.GetClusterID(x, y);
-                    if (clusterId != 0)
-                    {
-                        // Only process each cluster once
-                        if (!processedClusters.Contains(clusterId))
-                        {
-                            processedClusters.Add(clusterId);
-
-                            // Get cluster data - only move if cluster's material is blocked
-                            var clusterData = clusterMgr.GetCluster(clusterId);
-                            if (clusterData.HasValue && BlockedMaterials.Contains(clusterData.Value.Type))
-                            {
-                                Vector2 vel = clusterData.Value.Velocity;
-                                vel.x = Mathf.MoveTowards(vel.x, targetVelX, BeltVelocity);
-                                clusterMgr.SetClusterVelocity(clusterId, vel);
-                            }
-                        }
-                        continue;
-                    }
-
-                    MaterialType type = grid.Get(x, y);
-
-                    // Move materials that are in the blocked set
-                    if (BlockedMaterials.Contains(type))
-                    {
-                        int newX = x + direction;
-                        if (grid.Get(newX, y) == MaterialType.Air)
-                        {
-                            grid.Set(x, y, MaterialType.Air);
-                            grid.Set(newX, y, type);
-                        }
-                    }
-                }
-            }
-        }
-
     }
 }

@@ -1,5 +1,6 @@
 using UnityEngine;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 
 namespace GoldRush.Infrastructure
@@ -17,8 +18,9 @@ namespace GoldRush.Infrastructure
             GameObject wallGO = new GameObject($"Wall_{gridX}_{gridY}");
             if (parent != null) wallGO.transform.SetParent(parent);
 
-            // Position using sub-grid (16x16 pixels)
-            Vector2 worldPos = GameSettings.SubGridToWorld(gridX, gridY);
+            // Position using metadata grid
+            var info = BuildTypeData.Get(BuildType.Wall);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
             wallGO.transform.position = worldPos;
 
             // Sprite (16x16 solid block)
@@ -50,12 +52,12 @@ namespace GoldRush.Infrastructure
             Vector2 worldPos = transform.position;
             Vector2Int gridPos = SimulationWorld.Instance.WorldToGrid(worldPos);
 
-            // Wall is 16x16 pixels = 8x8 simulation cells
-            int halfSize = 4;
-            simGridMinX = gridPos.x - halfSize;
-            simGridMaxX = gridPos.x + halfSize;
-            simGridMinY = gridPos.y - halfSize;
-            simGridMaxY = gridPos.y + halfSize;
+            // Wall dimensions from metadata
+            var info = BuildTypeData.Get(BuildType.Wall);
+            simGridMinX = gridPos.x - info.SimHalfWidth;
+            simGridMaxX = gridPos.x + info.SimHalfWidth;
+            simGridMinY = gridPos.y - info.SimHalfHeight;
+            simGridMaxY = gridPos.y + info.SimHalfHeight;
 
             // Register blocking for all cells in the wall
             var grid = SimulationWorld.Instance.Grid;

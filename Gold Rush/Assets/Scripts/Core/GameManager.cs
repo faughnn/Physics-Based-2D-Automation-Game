@@ -1,7 +1,6 @@
 using UnityEngine;
 using GoldRush.World;
 using GoldRush.Player;
-using GoldRush.Particles;
 using GoldRush.Building;
 using GoldRush.UI;
 using GoldRush.Simulation;
@@ -15,8 +14,6 @@ namespace GoldRush.Core
         // References to major systems
         public WorldGenerator WorldGenerator { get; private set; }
         public PlayerController Player { get; private set; }
-        public ParticlePool ParticlePool { get; private set; }
-        public WaterReservoir WaterReservoir { get; private set; }
         public BuildSystem BuildSystem { get; private set; }
         public UIManager UIManager { get; private set; }
         public SimulationWorld SimulationWorld { get; private set; }
@@ -43,12 +40,6 @@ namespace GoldRush.Core
 
             // Generate world (terrain blocks for visual/collision)
             GenerateWorld();
-
-            // Initialize particle pool (legacy - can be removed later)
-            InitializeParticlePool();
-
-            // Water reservoir is now handled by SimulationWorld
-            // InitializeWaterReservoir(); // Disabled - using simulation grid instead
 
             // Spawn player
             SpawnPlayer();
@@ -81,19 +72,6 @@ namespace GoldRush.Core
             GameObject simGO = new GameObject("SimulationWorld");
             SimulationWorld = simGO.AddComponent<SimulationWorld>();
             SimulationWorld.Initialize();
-        }
-
-        private void InitializeParticlePool()
-        {
-            GameObject poolGO = new GameObject("ParticlePool");
-            ParticlePool = poolGO.AddComponent<ParticlePool>();
-        }
-
-        private void InitializeWaterReservoir()
-        {
-            GameObject reservoirGO = new GameObject("WaterReservoir");
-            WaterReservoir = reservoirGO.AddComponent<WaterReservoir>();
-            WaterReservoir.Initialize();
         }
 
         private void InitializeBuildSystem()

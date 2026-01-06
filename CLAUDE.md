@@ -1,3 +1,9 @@
+# Claude Code Settings
+
+**Always use the Opus model for any subagents that are launched.**
+
+---
+
 # Development Guidelines
 
 ## Architecture Philosophy

@@ -1,5 +1,6 @@
 using UnityEngine;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 
 namespace GoldRush.Infrastructure
@@ -18,8 +19,9 @@ namespace GoldRush.Infrastructure
             GameObject liftGO = new GameObject($"Lift_{gridX}_{gridY}");
             if (parent != null) liftGO.transform.SetParent(parent);
 
-            // Position using infra grid (32x32 pixel cells)
-            Vector2 worldPos = GameSettings.InfraGridToWorld(gridX, gridY);
+            // Position using metadata grid
+            var info = BuildTypeData.Get(BuildType.Lift);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
             liftGO.transform.position = worldPos;
 
             // Create hollow visual (32x32 with thin walls)
@@ -51,15 +53,12 @@ namespace GoldRush.Infrastructure
             Vector2 worldPos = transform.position;
             Vector2Int gridPos = SimulationWorld.Instance.WorldToGrid(worldPos);
 
-            // Lift is 32x32 pixels = 16x16 simulation cells
-            // Shrink horizontally by 1 cell on each side to avoid edge issues
-            // Keep full vertical coverage so stacked lifts don't have gaps
-            int halfSizeX = 7;
-            int halfSizeY = 8;
-            simGridMinX = gridPos.x - halfSizeX;
-            simGridMaxX = gridPos.x + halfSizeX;
-            simGridMinY = gridPos.y - halfSizeY;
-            simGridMaxY = gridPos.y + halfSizeY;
+            // Lift dimensions from metadata
+            var info = BuildTypeData.Get(BuildType.Lift);
+            simGridMinX = gridPos.x - info.SimHalfWidth;
+            simGridMaxX = gridPos.x + info.SimHalfWidth;
+            simGridMinY = gridPos.y - info.SimHalfHeight;
+            simGridMaxY = gridPos.y + info.SimHalfHeight;
 
             // Register TWO force zones to create a centering funnel effect
             // Left half: pushes right + up/down

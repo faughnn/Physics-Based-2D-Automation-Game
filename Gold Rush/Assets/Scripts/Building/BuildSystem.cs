@@ -20,7 +20,8 @@ namespace GoldRush.Building
         SmallCrusher,
         Blower,
         Grinder,
-        Smelter
+        Smelter,
+        Pusher
     }
 
     public class BuildSystem : MonoBehaviour
@@ -112,26 +113,6 @@ namespace GoldRush.Building
             }
 
             Debug.Log($"Cleaned up {toRemove.Count} ghost entries");
-        }
-
-        // Returns true if this build type uses the infra grid (32x32) - Lift, Blower, Grinder, Crushers
-        private bool UsesInfraGrid(BuildType type)
-        {
-            return type == BuildType.Lift || type == BuildType.Blower ||
-                   type == BuildType.BigCrusher || type == BuildType.SmallCrusher ||
-                   type == BuildType.Grinder;
-        }
-
-        // Returns true if this build type uses the sub-grid (16x16) - Belt, Wall, FilterBelt
-        private bool UsesSubGrid(BuildType type)
-        {
-            return type == BuildType.Belt || type == BuildType.Wall || type == BuildType.FilterBelt;
-        }
-
-        // Returns true if this build type uses the shaker grid (32x16) - Shaker
-        private bool UsesShakerGrid(BuildType type)
-        {
-            return type == BuildType.Shaker;
         }
 
         private void HandleInput()
@@ -276,15 +257,9 @@ namespace GoldRush.Building
                     break;
                 case BuildType.GoldStore:
                     placed = GoldStore.Create(gridPos.x, gridPos.y, infrastructureParent);
-                    // Gold store takes 2 cells
-                    placedInfrastructure[new Vector2Int(gridPos.x + 1, gridPos.y)] = placed;
                     break;
                 case BuildType.BigCrusher:
                     placed = BigCrusher.Create(gridPos.x, gridPos.y, infrastructureParent);
-                    // Big crusher takes 2x2 cells (64x64 pixels)
-                    placedInfrastructure[new Vector2Int(gridPos.x + 1, gridPos.y)] = placed;
-                    placedInfrastructure[new Vector2Int(gridPos.x, gridPos.y + 1)] = placed;
-                    placedInfrastructure[new Vector2Int(gridPos.x + 1, gridPos.y + 1)] = placed;
                     break;
                 case BuildType.SmallCrusher:
                     placed = SmallCrusher.Create(gridPos.x, gridPos.y, infrastructureParent);
@@ -297,14 +272,27 @@ namespace GoldRush.Building
                     break;
                 case BuildType.Smelter:
                     placed = Smelter.Create(gridPos.x, gridPos.y, infrastructureParent);
-                    // Smelter takes 2 cells horizontally (like GoldStore)
-                    placedInfrastructure[new Vector2Int(gridPos.x + 1, gridPos.y)] = placed;
+                    break;
+                case BuildType.Pusher:
+                    var pushDir = DirectionPositive ? PushDirection.Right : PushDirection.Left;
+                    placed = Pusher.Create(gridPos.x, gridPos.y, pushDir, infrastructureParent);
                     break;
             }
 
             if (placed != null)
             {
                 placedInfrastructure[gridPos] = placed;
+
+                // Register all cells for multi-cell buildings using metadata
+                var info = BuildTypeData.Get(CurrentBuildType);
+                for (int dx = 0; dx < info.CellSpanX; dx++)
+                {
+                    for (int dy = 0; dy < info.CellSpanY; dy++)
+                    {
+                        if (dx == 0 && dy == 0) continue; // Already registered above
+                        placedInfrastructure[new Vector2Int(gridPos.x + dx, gridPos.y + dy)] = placed;
+                    }
+                }
 
                 // Explode any particles trapped in the build area upward
                 ExplodeParticlesInArea(gridPos, CurrentBuildType);
@@ -348,28 +336,14 @@ namespace GoldRush.Building
 
         public bool CanPlaceAt(Vector2Int gridPos)
         {
-            // Determine bounds based on grid type
-            int maxX, maxY;
-            if (UsesSubGrid(CurrentBuildType))
+            // Get grid bounds from metadata
+            if (!BuildTypeData.TryGet(CurrentBuildType, out var info))
             {
-                maxX = GameSettings.SubGridWorldWidthCells;
-                maxY = GameSettings.SubGridWorldHeightCells;
+                return false;
             }
-            else if (UsesShakerGrid(CurrentBuildType))
-            {
-                maxX = GameSettings.WorldWidthCells;
-                maxY = GameSettings.WorldHeightCells * 2; // Double vertical positions
-            }
-            else if (UsesInfraGrid(CurrentBuildType))
-            {
-                maxX = GameSettings.InfraWorldWidthCells;
-                maxY = GameSettings.InfraWorldHeightCells;
-            }
-            else
-            {
-                maxX = GameSettings.WorldWidthCells;
-                maxY = GameSettings.WorldHeightCells;
-            }
+
+            int maxX = info.Grid.WorldWidthCells;
+            int maxY = info.Grid.WorldHeightCells;
 
             if (gridPos.x < 0 || gridPos.x >= maxX ||
                 gridPos.y < 0 || gridPos.y >= maxY)
@@ -409,41 +383,10 @@ namespace GoldRush.Building
 
         private Rect GetWorldBoundsForPlacement(Vector2Int gridPos, BuildType type)
         {
-            Vector2 worldPos;
-            float width, height;
-
-            if (UsesSubGrid(type))
-            {
-                worldPos = GameSettings.SubGridToWorld(gridPos.x, gridPos.y);
-                width = height = GameSettings.SubGridSize / GameSettings.PixelsPerUnit;
-            }
-            else if (UsesShakerGrid(type))
-            {
-                worldPos = GameSettings.ShakerGridToWorld(gridPos.x, gridPos.y);
-                width = GameSettings.GridSize / GameSettings.PixelsPerUnit;
-                height = GameSettings.ShakerSubGridHeight / GameSettings.PixelsPerUnit;
-            }
-            else if (UsesInfraGrid(type))
-            {
-                worldPos = GameSettings.InfraGridToWorld(gridPos.x, gridPos.y);
-                width = height = GameSettings.InfraGridSize / GameSettings.PixelsPerUnit;
-            }
-            else
-            {
-                worldPos = GameSettings.GridToWorld(gridPos.x, gridPos.y);
-                width = height = GameSettings.GridSize / GameSettings.PixelsPerUnit;
-            }
-
-            // Handle multi-cell buildings
-            if (type == BuildType.GoldStore || type == BuildType.Smelter)
-            {
-                width *= 2; // 2 cells wide
-            }
-            else if (type == BuildType.BigCrusher)
-            {
-                width *= 2;  // 2 cells wide
-                height *= 2; // 2 cells tall (square)
-            }
+            var info = BuildTypeData.Get(type);
+            Vector2 worldPos = info.Grid.ToWorld(gridPos.x, gridPos.y);
+            float width = info.VisualWidthUnits;
+            float height = info.VisualHeightUnits;
 
             // Return bounds centered on worldPos
             return new Rect(
@@ -497,17 +440,9 @@ namespace GoldRush.Building
             Vector2 mouseWorld = mainCamera.ScreenToWorldPoint(Input.mousePosition);
 
             // Use appropriate grid based on build type
-            if (UsesSubGrid(CurrentBuildType))
+            if (BuildTypeData.TryGet(CurrentBuildType, out var info))
             {
-                return GameSettings.WorldToSubGrid(mouseWorld);
-            }
-            if (UsesShakerGrid(CurrentBuildType))
-            {
-                return GameSettings.WorldToShakerGrid(mouseWorld);
-            }
-            if (UsesInfraGrid(CurrentBuildType))
-            {
-                return GameSettings.WorldToInfraGrid(mouseWorld);
+                return info.Grid.FromWorld(mouseWorld);
             }
             return GameSettings.WorldToGrid(mouseWorld);
         }

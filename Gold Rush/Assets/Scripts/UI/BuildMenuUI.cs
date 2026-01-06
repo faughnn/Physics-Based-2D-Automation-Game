@@ -17,7 +17,7 @@ namespace GoldRush.UI
             rectTransform.anchorMax = new Vector2(0.5f, 1f);
             rectTransform.pivot = new Vector2(0.5f, 1f);
             rectTransform.anchoredPosition = new Vector2(0, -10);
-            rectTransform.sizeDelta = new Vector2(1120, 80);
+            rectTransform.sizeDelta = new Vector2(1220, 80);
 
             // Background
             Image bg = gameObject.AddComponent<Image>();
@@ -32,10 +32,10 @@ namespace GoldRush.UI
 
         private void CreateButtons()
         {
-            string[] names = { "Wall", "Belt", "Filter", "Lift", "Blower", "Big Crush", "Sm Crush", "Grinder", "Shaker", "Smelter", "Gold Store" };
+            string[] names = { "Wall", "Belt", "Filter", "Lift", "Blower", "Pusher", "Big Crush", "Sm Crush", "Grinder", "Shaker", "Smelter", "Gold Store" };
             BuildType[] types = {
                 BuildType.Wall, BuildType.Belt, BuildType.FilterBelt, BuildType.Lift, BuildType.Blower,
-                BuildType.BigCrusher, BuildType.SmallCrusher, BuildType.Grinder, BuildType.Shaker, BuildType.Smelter, BuildType.GoldStore
+                BuildType.Pusher, BuildType.BigCrusher, BuildType.SmallCrusher, BuildType.Grinder, BuildType.Shaker, BuildType.Smelter, BuildType.GoldStore
             };
             Color[] colors = {
                 new Color(0.3f, 0.3f, 0.3f),      // Wall
@@ -43,6 +43,7 @@ namespace GoldRush.UI
                 new Color(0.3f, 0.3f, 0.4f),      // Filter (darker blue-grey)
                 new Color(0.25f, 0.25f, 0.25f),   // Lift
                 new Color(0.4f, 0.7f, 1f),        // Blower (light blue)
+                new Color(0.4f, 0.4f, 0.45f),     // Pusher (grey-blue)
                 new Color(0.35f, 0.35f, 0.4f),    // Big Crusher (dark grey-blue)
                 new Color(0.4f, 0.35f, 0.35f),    // Small Crusher (reddish grey)
                 new Color(0.6f, 0.55f, 0.5f),     // Grinder (light brown metal)

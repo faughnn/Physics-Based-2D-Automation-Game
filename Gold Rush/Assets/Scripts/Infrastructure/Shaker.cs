@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 
 namespace GoldRush.Infrastructure
@@ -32,9 +33,9 @@ namespace GoldRush.Infrastructure
             GameObject shakerGO = new GameObject($"Shaker_{gridX}_{gridY}");
             if (parent != null) shakerGO.transform.SetParent(parent);
 
-            // Position using shaker grid (32x16 half-cells)
-            // gridY: even = top half, odd = bottom half of main cell
-            Vector2 worldPos = GameSettings.ShakerGridToWorld(gridX, gridY);
+            // Position using metadata grid
+            var info = BuildTypeData.Get(BuildType.Shaker);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
             shakerGO.transform.position = worldPos;
 
             // Sprite
@@ -78,10 +79,10 @@ namespace GoldRush.Infrastructure
             Vector2 surfacePos = (Vector2)transform.position + new Vector2(0, 9f / GameSettings.PixelsPerUnit);
             Vector2Int gridPos = SimulationWorld.Instance.WorldToGrid(surfacePos);
 
-            // Shaker is 32 pixels wide = 16 simulation cells
-            int halfWidth = 8;
-            simGridMinX = gridPos.x - halfWidth;
-            simGridMaxX = gridPos.x + halfWidth;
+            // Shaker dimensions from metadata
+            var info = BuildTypeData.Get(BuildType.Shaker);
+            simGridMinX = gridPos.x - info.SimHalfWidth;
+            simGridMaxX = gridPos.x + info.SimHalfWidth;
             simGridY = gridPos.y;  // Surface level in grid coords
 
             // Register shaker mesh blocking for shaker body - blocks everything EXCEPT gold

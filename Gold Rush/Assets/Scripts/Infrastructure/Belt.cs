@@ -1,5 +1,6 @@
 using UnityEngine;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 
 namespace GoldRush.Infrastructure
@@ -18,8 +19,9 @@ namespace GoldRush.Infrastructure
             GameObject beltGO = new GameObject($"Belt_{gridX}_{gridY}");
             if (parent != null) beltGO.transform.SetParent(parent);
 
-            // Position using sub-grid (16x16 pixel cells)
-            Vector2 worldPos = GameSettings.SubGridToWorld(gridX, gridY);
+            // Position using metadata grid
+            var info = BuildTypeData.Get(BuildType.Belt);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
             beltGO.transform.position = worldPos;
 
             // Sprite with arrow (16x16 pixels)
@@ -63,10 +65,10 @@ namespace GoldRush.Infrastructure
             Vector2 surfacePos = (Vector2)transform.position + new Vector2(0, 9f / GameSettings.PixelsPerUnit);
             Vector2Int gridPos = SimulationWorld.Instance.WorldToGrid(surfacePos);
 
-            // Belt covers about 8 simulation cells wide (16 pixels / 2)
-            int halfWidth = 4;
-            simGridMinX = gridPos.x - halfWidth;
-            simGridMaxX = gridPos.x + halfWidth;
+            // Belt coverage from metadata
+            var info = BuildTypeData.Get(BuildType.Belt);
+            simGridMinX = gridPos.x - info.SimHalfWidth;
+            simGridMaxX = gridPos.x + info.SimHalfWidth;
             simGridY = gridPos.y;  // Surface level in grid coords
 
             // Register blocking cells - block the interior of the belt (below surface)
@@ -80,25 +82,23 @@ namespace GoldRush.Infrastructure
                 }
             }
 
-            // Register force zone for the belt surface (particles resting on top get pushed)
-            // Surface zone: covers cells at surface level and a few cells above for stacking
-            float beltDir = MovesRight ? 1f : -1f;
-            ForceZone zone = new ForceZone
+            // Register belt surface for bulk transport
+            // Every N frames, all materials on this surface shift 1 cell in belt direction
+            BeltSurface surface = new BeltSurface
             {
                 MinX = simGridMinX,
                 MaxX = simGridMaxX,
-                MinY = simGridY - 8,  // Cover stacked particles (up to 16 pixels above)
-                MaxY = simGridY,       // Surface level
-                Force = new Vector2(beltDir * GameSettings.SimBeltForce, 0),
+                SurfaceY = simGridY,
+                MovesRight = MovesRight,
                 Owner = this
             };
-            ForceZoneManager.Instance.RegisterZone(zone);
+            BeltVelocityManager.Instance.RegisterBeltSurface(surface);
         }
 
         private void OnDestroy()
         {
-            // Unregister force zone
-            ForceZoneManager.Instance.UnregisterZone(this);
+            // Unregister belt surface
+            BeltVelocityManager.Instance.UnregisterBeltSurface(this);
 
             // Unregister blocking cells when belt is destroyed
             if (SimulationWorld.Instance == null) return;

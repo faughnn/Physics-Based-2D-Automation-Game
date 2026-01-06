@@ -309,6 +309,12 @@ namespace GoldRush.Simulation
             // Clear update flags
             System.Array.Clear(updatedThisFrame, 0, updatedThisFrame.Length);
 
+            // Belt bulk transport (shifts contents every N frames)
+            BeltVelocityManager.Instance.Update(this);
+
+            // Pusher plate movement and crushing
+            PusherManager.Instance.Update(this);
+
             // Process clusters first (they move as units)
             clusterManager.Update();
 
@@ -612,6 +618,45 @@ namespace GoldRush.Simulation
         {
             if (InBounds(x, y))
                 updatedThisFrame[y * Width + x] = true;
+        }
+
+        // Direct cell move without physics - for belt bulk shift
+        // Returns true if move succeeded
+        public bool MoveCellDirect(int fromX, int fromY, int toX, int toY)
+        {
+            if (!InBounds(fromX, fromY) || !InBounds(toX, toY))
+                return false;
+
+            int fromIndex = fromY * Width + fromX;
+            int toIndex = toY * Width + toX;
+
+            MaterialType type = cells[fromIndex];
+            if (type == MaterialType.Air || !MaterialProperties.IsSimulated(type))
+                return false;
+
+            if (cells[toIndex] != MaterialType.Air)
+                return false;
+
+            // Move cell
+            cells[fromIndex] = MaterialType.Air;
+            cells[toIndex] = type;
+
+            // Transfer velocity and sub-position
+            velocities[toIndex] = velocities[fromIndex];
+            subPositionX[toIndex] = subPositionX[fromIndex];
+            subPositionY[toIndex] = subPositionY[fromIndex];
+            velocities[fromIndex] = Vector2.zero;
+            subPositionX[fromIndex] = 0;
+            subPositionY[fromIndex] = 0;
+
+            // Wake the moved cell and cells that might fall into vacated space
+            nextActiveSet.Add(toIndex);
+            settleCounters[toIndex] = 0;
+            WakeCell(fromX, fromY - 1);
+            WakeCell(fromX - 1, fromY - 1);
+            WakeCell(fromX + 1, fromY - 1);
+
+            return true;
         }
 
         // Add material at position (for spawning sand when digging, etc.)

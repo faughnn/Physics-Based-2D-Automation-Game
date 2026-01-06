@@ -1,5 +1,6 @@
 using UnityEngine;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 
 namespace GoldRush.Infrastructure
@@ -23,8 +24,9 @@ namespace GoldRush.Infrastructure
             GameObject grinderGO = new GameObject($"Grinder_{gridX}_{gridY}");
             if (parent != null) grinderGO.transform.SetParent(parent);
 
-            // Position using infra grid (32x32 pixel cells)
-            Vector2 worldPos = GameSettings.InfraGridToWorld(gridX, gridY);
+            // Position using metadata grid
+            var info = BuildTypeData.Get(BuildType.Grinder);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
             grinderGO.transform.position = worldPos;
 
             // Create visual components
@@ -209,9 +211,10 @@ namespace GoldRush.Infrastructure
             Vector2 worldPos = transform.position;
             Vector2Int gridPos = SimulationWorld.Instance.WorldToGrid(worldPos);
 
-            // Grinder processes area roughly 8x8 simulation cells
-            simGridMinX = gridPos.x - 4;
-            simGridMaxX = gridPos.x + 4;
+            // Grinder dimensions from metadata
+            var info = BuildTypeData.Get(BuildType.Grinder);
+            simGridMinX = gridPos.x - info.SimHalfWidth;
+            simGridMaxX = gridPos.x + info.SimHalfWidth;
             simGridY = gridPos.y;
         }
 

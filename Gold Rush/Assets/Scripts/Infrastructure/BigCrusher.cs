@@ -1,5 +1,6 @@
 using UnityEngine;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 using System.Collections.Generic;
 
@@ -41,12 +42,12 @@ namespace GoldRush.Infrastructure
             GameObject crusherGO = new GameObject($"BigCrusher_{gridX}_{gridY}");
             if (parent != null) crusherGO.transform.SetParent(parent);
 
-            // Position using infra grid (32x32 pixel cells)
-            // Big crusher is 2x2 cells (64x64 pixels)
-            Vector2 worldPos = GameSettings.InfraGridToWorld(gridX, gridY);
-            // Offset to center of 2x2 cell area
-            worldPos.x += GameSettings.InfraGridSize / (2f * GameSettings.PixelsPerUnit);
-            worldPos.y -= GameSettings.InfraGridSize / (2f * GameSettings.PixelsPerUnit);
+            // Position using metadata grid (handles multi-cell offset)
+            var info = BuildTypeData.Get(BuildType.BigCrusher);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
+            // Offset for 2x2 cell area
+            worldPos.x += (info.CellSpanX - 1) * info.Grid.CellWidth / 2f / GameSettings.PixelsPerUnit;
+            worldPos.y -= (info.CellSpanY - 1) * info.Grid.CellHeight / 2f / GameSettings.PixelsPerUnit;
             crusherGO.transform.position = worldPos;
 
             // Create visual components
@@ -246,11 +247,11 @@ namespace GoldRush.Infrastructure
             crusherCenterX = gridPos.x;
             crusherCenterY = gridPos.y;
 
-            // Big crusher is 64 pixels wide = 32 sim cells wide
-            // Interior is about 56 pixels = 28 sim cells (walls are 4 pixels each)
-            crusherHalfWidth = 14;  // From center to inner edge of wall
-            crusherTop = gridPos.y - 14;
-            crusherBottom = gridPos.y + 14;
+            // Big crusher dimensions from metadata
+            var info = BuildTypeData.Get(BuildType.BigCrusher);
+            crusherHalfWidth = info.SimHalfWidth;
+            crusherTop = gridPos.y - info.SimHalfHeight;
+            crusherBottom = gridPos.y + info.SimHalfHeight;
 
             // Store visual dimensions
             float cellSize = GameSettings.InfraGridSize / GameSettings.PixelsPerUnit;

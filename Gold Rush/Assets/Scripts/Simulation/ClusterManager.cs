@@ -449,6 +449,33 @@ namespace GoldRush.Simulation
             }
         }
 
+        // Direct cluster move without physics - for belt bulk shift
+        // Returns true if move succeeded
+        public bool MoveClusterDirect(uint id, int deltaX)
+        {
+            if (!clusters.TryGetValue(id, out ClusterData cluster))
+                return false;
+
+            if (deltaX == 0)
+                return true;  // No movement needed
+
+            // Try to move the cluster
+            if (TryMoveCluster(id, deltaX, 0))
+            {
+                // Re-read cluster after move and wake it
+                if (clusters.TryGetValue(id, out cluster))
+                {
+                    cluster.IsActive = true;
+                    cluster.SettleCounter = 0;
+                    clusters[id] = cluster;
+                    activeClusters.Add(id);
+                }
+                return true;
+            }
+
+            return false;
+        }
+
         public void WakeClusterAt(int x, int y)
         {
             uint id = grid.GetClusterID(x, y);

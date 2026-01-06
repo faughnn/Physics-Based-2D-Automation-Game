@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 
 namespace GoldRush.Infrastructure
@@ -26,9 +27,11 @@ namespace GoldRush.Infrastructure
             GameObject storeGO = new GameObject($"GoldStore_{gridX}_{gridY}");
             if (parent != null) storeGO.transform.SetParent(parent);
 
-            // Position (gold store is 64x32, spans 2 cells horizontally)
-            Vector2 worldPos = GameSettings.GridToWorld(gridX, gridY);
-            worldPos.x += GameSettings.GridSize / 2f / GameSettings.PixelsPerUnit; // Offset to center on 2 cells
+            // Position using metadata grid (handles multi-cell offset)
+            var info = BuildTypeData.Get(BuildType.GoldStore);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
+            // Offset for 2-cell width
+            worldPos.x += (info.CellSpanX - 1) * info.Grid.CellWidth / 2f / GameSettings.PixelsPerUnit;
             storeGO.transform.position = worldPos;
 
             // Sprite
@@ -74,13 +77,12 @@ namespace GoldRush.Infrastructure
             Vector2 worldPos = transform.position;
             Vector2Int gridPos = SimulationWorld.Instance.WorldToGrid(worldPos);
 
-            // Store covers about 32x16 simulation cells (64x32 pixels / 2)
-            int halfWidth = 16;
-            int halfHeight = 8;
-            simGridMinX = gridPos.x - halfWidth;
-            simGridMaxX = gridPos.x + halfWidth;
-            simGridMinY = gridPos.y - halfHeight;
-            simGridMaxY = gridPos.y + halfHeight;
+            // Store dimensions from metadata
+            var info = BuildTypeData.Get(BuildType.GoldStore);
+            simGridMinX = gridPos.x - info.SimHalfWidth;
+            simGridMaxX = gridPos.x + info.SimHalfWidth;
+            simGridMinY = gridPos.y - info.SimHalfHeight;
+            simGridMaxY = gridPos.y + info.SimHalfHeight;
         }
 
         private void CreateCounterText()

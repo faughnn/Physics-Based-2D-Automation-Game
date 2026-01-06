@@ -1,5 +1,6 @@
 using UnityEngine;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 using System.Collections.Generic;
 
@@ -38,8 +39,9 @@ namespace GoldRush.Infrastructure
             GameObject crusherGO = new GameObject($"SmallCrusher_{gridX}_{gridY}");
             if (parent != null) crusherGO.transform.SetParent(parent);
 
-            // Position using infra grid (32x32 pixel cells)
-            Vector2 worldPos = GameSettings.InfraGridToWorld(gridX, gridY);
+            // Position using metadata grid
+            var info = BuildTypeData.Get(BuildType.SmallCrusher);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
             crusherGO.transform.position = worldPos;
 
             // Create visual components
@@ -229,11 +231,11 @@ namespace GoldRush.Infrastructure
             crusherCenterX = gridPos.x;
             crusherCenterY = gridPos.y;
 
-            // Small crusher is 32 pixels wide = 16 sim cells wide
-            // Interior is about 28 pixels = 14 sim cells
-            crusherHalfWidth = 7;
-            crusherTop = gridPos.y - 7;
-            crusherBottom = gridPos.y + 7;
+            // Small crusher dimensions from metadata
+            var info = BuildTypeData.Get(BuildType.SmallCrusher);
+            crusherHalfWidth = info.SimHalfWidth;
+            crusherTop = gridPos.y - info.SimHalfHeight;
+            crusherBottom = gridPos.y + info.SimHalfHeight;
 
             // Store visual dimensions
             float cellSize = GameSettings.InfraGridSize / GameSettings.PixelsPerUnit;

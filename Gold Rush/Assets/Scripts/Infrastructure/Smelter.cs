@@ -1,5 +1,6 @@
 using UnityEngine;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 
 namespace GoldRush.Infrastructure
@@ -27,10 +28,11 @@ namespace GoldRush.Infrastructure
             GameObject smelterGO = new GameObject($"Smelter_{gridX}_{gridY}");
             if (parent != null) smelterGO.transform.SetParent(parent);
 
-            // Position using standard grid (32x32 pixel cells)
-            // Smelter is 64x32 (2 cells wide), so offset to center
-            Vector2 worldPos = GameSettings.GridToWorld(gridX, gridY);
-            worldPos.x += GameSettings.GridSize / (2f * GameSettings.PixelsPerUnit);
+            // Position using metadata grid (handles multi-cell offset)
+            var info = BuildTypeData.Get(BuildType.Smelter);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
+            // Offset for 2-cell width
+            worldPos.x += (info.CellSpanX - 1) * info.Grid.CellWidth / 2f / GameSettings.PixelsPerUnit;
             smelterGO.transform.position = worldPos;
 
             // Create visual components
@@ -209,11 +211,12 @@ namespace GoldRush.Infrastructure
             Vector2 worldPos = transform.position;
             Vector2Int gridPos = SimulationWorld.Instance.WorldToGrid(worldPos);
 
-            // Smelter processes area roughly 16x8 simulation cells (wider due to 64px width)
-            simGridMinX = gridPos.x - 8;
-            simGridMaxX = gridPos.x + 8;
-            simGridMinY = gridPos.y - 4;
-            simGridMaxY = gridPos.y + 4;
+            // Smelter dimensions from metadata
+            var info = BuildTypeData.Get(BuildType.Smelter);
+            simGridMinX = gridPos.x - info.SimHalfWidth;
+            simGridMaxX = gridPos.x + info.SimHalfWidth;
+            simGridMinY = gridPos.y - info.SimHalfHeight;
+            simGridMaxY = gridPos.y + info.SimHalfHeight;
         }
 
         private void Update()

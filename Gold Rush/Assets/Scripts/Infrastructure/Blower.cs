@@ -1,5 +1,6 @@
 using UnityEngine;
 using GoldRush.Core;
+using GoldRush.Building;
 using GoldRush.Simulation;
 
 namespace GoldRush.Infrastructure
@@ -18,8 +19,9 @@ namespace GoldRush.Infrastructure
             GameObject blowerGO = new GameObject($"Blower_{gridX}_{gridY}");
             if (parent != null) blowerGO.transform.SetParent(parent);
 
-            // Position using infra grid (32x32 pixel cells, same as Lift)
-            Vector2 worldPos = GameSettings.InfraGridToWorld(gridX, gridY);
+            // Position using metadata grid
+            var info = BuildTypeData.Get(BuildType.Blower);
+            Vector2 worldPos = info.Grid.ToWorld(gridX, gridY);
             blowerGO.transform.position = worldPos;
 
             // Create hollow visual (32x32 with thin walls, horizontal)
@@ -59,12 +61,12 @@ namespace GoldRush.Infrastructure
             Vector2 worldPos = transform.position;
             Vector2Int gridPos = SimulationWorld.Instance.WorldToGrid(worldPos);
 
-            // Blower is 32x32 pixels = 16x16 simulation cells (same as Lift)
-            int halfSize = 8;
-            simGridMinX = gridPos.x - halfSize;
-            simGridMaxX = gridPos.x + halfSize;
-            simGridMinY = gridPos.y - halfSize;
-            simGridMaxY = gridPos.y + halfSize;
+            // Blower dimensions from metadata
+            var info = BuildTypeData.Get(BuildType.Blower);
+            simGridMinX = gridPos.x - info.SimHalfWidth;
+            simGridMaxX = gridPos.x + info.SimHalfWidth;
+            simGridMinY = gridPos.y - info.SimHalfHeight;
+            simGridMaxY = gridPos.y + info.SimHalfHeight;
 
             // Register force zone - horizontal force
             float blowDir = BlowsRight ? 1f : -1f;
