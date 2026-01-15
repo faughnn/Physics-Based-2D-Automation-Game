@@ -18,6 +18,7 @@ namespace FallingSand
 
         private CellWorld world;
         private CellRenderer cellRenderer;
+        private CellSimulatorJobbed simulator;
         private Camera mainCamera;
 
         // Material names for display
@@ -28,6 +29,7 @@ namespace FallingSand
         private Keyboard keyboard;
 
         public CellWorld World => world;
+        public CellSimulatorJobbed Simulator => simulator;
         public byte CurrentMaterial => currentMaterial;
         public string CurrentMaterialName => currentMaterial < materialNames.Length ? materialNames[currentMaterial] : $"Material {currentMaterial}";
 
@@ -44,6 +46,10 @@ namespace FallingSand
             Debug.Log($"[SandboxController] Creating world {worldWidth}x{worldHeight}...");
             world = new CellWorld(worldWidth, worldHeight);
             Debug.Log($"[SandboxController] World created. Cells: {world.cells.Length}, Chunks: {world.chunks.Length}");
+
+            // Create the multithreaded simulator
+            simulator = new CellSimulatorJobbed();
+            Debug.Log("[SandboxController] CellSimulatorJobbed created");
 
             // Create renderer
             Debug.Log("[SandboxController] Creating CellRenderer...");
@@ -92,8 +98,8 @@ namespace FallingSand
             HandleInput();
             HandleMaterialSelection();
 
-            // Simulate physics
-            CellSimulator.Simulate(world);
+            // Simulate physics (multithreaded)
+            simulator.Simulate(world);
 
             // Upload texture changes
             cellRenderer.UploadFullTexture();
@@ -187,6 +193,7 @@ namespace FallingSand
 
         private void OnDestroy()
         {
+            simulator?.Dispose();
             world?.Dispose();
         }
     }

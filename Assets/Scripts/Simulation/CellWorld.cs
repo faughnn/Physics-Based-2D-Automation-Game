@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using Unity.Jobs;
 
 namespace FallingSand
 {
@@ -230,6 +231,52 @@ namespace FallingSand
             }
 
             return count;
+        }
+
+        /// <summary>
+        /// Collects active chunks into 4 groups based on their position for parallel processing.
+        /// Groups form a checkerboard pattern:
+        /// A B A B
+        /// C D C D
+        /// A B A B
+        /// </summary>
+        public void CollectChunkGroups(
+            NativeList<int> groupA,
+            NativeList<int> groupB,
+            NativeList<int> groupC,
+            NativeList<int> groupD)
+        {
+            groupA.Clear();
+            groupB.Clear();
+            groupC.Clear();
+            groupD.Clear();
+
+            for (int i = 0; i < chunks.Length; i++)
+            {
+                ChunkState chunk = chunks[i];
+
+                // Active if: dirty OR was active last frame OR has structures
+                bool shouldProcess = (chunk.flags & ChunkFlags.IsDirty) != 0
+                                  || chunk.activeLastFrame != 0
+                                  || (chunk.flags & ChunkFlags.HasStructure) != 0;
+
+                if (!shouldProcess)
+                    continue;
+
+                int chunkX = i % chunksX;
+                int chunkY = i / chunksX;
+
+                // Group assignment: A=0, B=1, C=2, D=3
+                int group = (chunkX & 1) + ((chunkY & 1) << 1);
+
+                switch (group)
+                {
+                    case 0: groupA.Add(i); break;
+                    case 1: groupB.Add(i); break;
+                    case 2: groupC.Add(i); break;
+                    case 3: groupD.Add(i); break;
+                }
+            }
         }
 
         /// <summary>

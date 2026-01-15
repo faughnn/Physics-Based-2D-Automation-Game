@@ -1,4 +1,5 @@
 using UnityEngine;
+using Unity.Jobs.LowLevel.Unsafe;
 
 namespace FallingSand
 {
@@ -13,6 +14,8 @@ namespace FallingSand
         private int cachedFps;
         private int cachedActiveChunks;
         private int cachedActiveCells;
+        private float cachedSimTimeMs;
+        private int workerThreadCount;
 
         private GUIStyle boxStyle;
         private GUIStyle labelStyle;
@@ -23,6 +26,9 @@ namespace FallingSand
             {
                 sandbox = FindFirstObjectByType<SandboxController>();
             }
+
+            // Get worker thread count (set once at startup)
+            workerThreadCount = JobsUtility.JobWorkerCount;
         }
 
         private void Update()
@@ -40,6 +46,11 @@ namespace FallingSand
                 {
                     cachedActiveChunks = sandbox.World.CountActiveChunks();
                     cachedActiveCells = sandbox.World.CountActiveCells();
+
+                    if (sandbox.Simulator != null)
+                    {
+                        cachedSimTimeMs = sandbox.Simulator.LastSimulationTimeMs;
+                    }
                 }
             }
         }
@@ -59,9 +70,9 @@ namespace FallingSand
 
             // Draw metrics box in top-left corner
             float padding = 10;
-            float width = 200;
+            float width = 220;
             float lineHeight = 20;
-            float height = lineHeight * 5 + padding * 2;
+            float height = lineHeight * 7 + padding * 2;
 
             Rect boxRect = new Rect(padding, padding, width, height);
             GUI.Box(boxRect, GUIContent.none, boxStyle);
@@ -85,6 +96,19 @@ namespace FallingSand
             // Active cells
             GUI.Label(new Rect(x, y, width, lineHeight), $"Active Cells: {cachedActiveCells:N0}", labelStyle);
             y += lineHeight;
+
+            // Simulation time
+            Color simColor = cachedSimTimeMs < 8f ? Color.green : (cachedSimTimeMs < 16f ? Color.yellow : Color.red);
+            GUI.color = simColor;
+            GUI.Label(new Rect(x, y, width, lineHeight), $"Sim Time: {cachedSimTimeMs:F2}ms", labelStyle);
+            y += lineHeight;
+
+            // Worker threads
+            GUI.color = Color.cyan;
+            GUI.Label(new Rect(x, y, width, lineHeight), $"Worker Threads: {workerThreadCount}", labelStyle);
+            y += lineHeight;
+
+            GUI.color = Color.white;
 
             // Current material
             if (sandbox != null)
