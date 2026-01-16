@@ -72,7 +72,7 @@ namespace FallingSand
             float padding = 10;
             float width = 220;
             float lineHeight = 20;
-            float height = lineHeight * 7 + padding * 2;
+            float height = lineHeight * 8 + padding * 2;
 
             Rect boxRect = new Rect(padding, padding, width, height);
             GUI.Box(boxRect, GUIContent.none, boxStyle);
@@ -110,13 +110,20 @@ namespace FallingSand
 
             GUI.color = Color.white;
 
-            // Current material
+            // Current material and speed
             if (sandbox != null)
             {
                 GUI.Label(new Rect(x, y, width, lineHeight), $"Material: {sandbox.CurrentMaterialName}", labelStyle);
                 y += lineHeight;
 
-                GUI.Label(new Rect(x, y, width, lineHeight), "Keys: 1-5 | LMB/RMB", labelStyle);
+                // Simulation speed (1=fastest, 10=slowest)
+                int speed = sandbox.SimulationSpeed;
+                GUI.color = speed == 1 ? Color.white : Color.yellow;
+                GUI.Label(new Rect(x, y, width, lineHeight), $"Sim Speed: {speed} (Numpad +/-)", labelStyle);
+                y += lineHeight;
+
+                GUI.color = Color.gray;
+                GUI.Label(new Rect(x, y, width, lineHeight), "1-6: Material | LMB/RMB", labelStyle);
             }
         }
 

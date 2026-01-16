@@ -40,7 +40,7 @@ namespace FallingSand
 
         public Color32 baseColour;      // RGBA for rendering
         public byte colourVariation;    // Random variation amount
-        public byte padding1;
+        public byte dispersionRate;     // Base horizontal spread for liquids (0-255)
         public byte padding2;
         public byte padding3;
     }
@@ -110,6 +110,7 @@ namespace FallingSand
                 materialOnBoil = Steam,
                 baseColour = new Color32(32, 64, 192, 255),
                 colourVariation = 10,
+                dispersionRate = 5,  // How far water spreads horizontally
             };
 
             // Oil - heavier liquid
@@ -123,6 +124,7 @@ namespace FallingSand
                 materialOnBurn = Smoke,
                 baseColour = new Color32(80, 60, 20, 255),
                 colourVariation = 5,
+                dispersionRate = 4,  // Oil spreads less than water
             };
 
             // Steam - rising gas

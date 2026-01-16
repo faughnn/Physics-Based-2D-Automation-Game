@@ -37,6 +37,9 @@ namespace FallingSand
         // Frame counter for double-processing prevention
         public ushort currentFrame;
 
+        // Gravity divisor: 1=full speed, 2=half gravity rate, etc.
+        public int gravityDivisor;
+
         // Buffer size around each chunk
         private const int BufferSize = 16;
         private const int ChunkSize = 32;
@@ -118,8 +121,11 @@ namespace FallingSand
 
         private void SimulatePowder(int x, int y, Cell cell, MaterialDef mat)
         {
-            // Apply gravity
-            cell.velocityY = (sbyte)math.min(cell.velocityY + 1, 16);
+            // Apply gravity (only on certain frames for slow-motion effect)
+            if (currentFrame % gravityDivisor == 0)
+            {
+                cell.velocityY = (sbyte)math.min(cell.velocityY + 1, 16);
+            }
 
             // Try to move down by velocity
             int targetY = y + cell.velocityY;
@@ -167,8 +173,14 @@ namespace FallingSand
 
         private void SimulateLiquid(int x, int y, Cell cell, MaterialDef mat)
         {
-            // Apply gravity
-            cell.velocityY = (sbyte)math.min(cell.velocityY + 1, 16);
+            // Track if we were free-falling before this frame
+            bool wasFreeFalling = cell.velocityY > 2;
+
+            // Apply gravity (only on certain frames for slow-motion effect)
+            if (currentFrame % gravityDivisor == 0)
+            {
+                cell.velocityY = (sbyte)math.min(cell.velocityY + 1, 16);
+            }
 
             // Try falling first
             if (TryFall(x, y, cell, mat.density))
@@ -177,57 +189,104 @@ namespace FallingSand
             if (TryDiagonalFall(x, y, cell, mat.density))
                 return;
 
-            // Spread horizontally
-            int spread = math.max(1, (16 - math.abs(cell.velocityY)) / (mat.friction + 1));
+            // Can't fall - convert vertical momentum to horizontal spread (Java-style)
+            // Key insight: faster falling water should spread MORE, not less
+            int velocityBoost = wasFreeFalling ? math.abs(cell.velocityY) / 3 : 0;
+            int spread = mat.dispersionRate + velocityBoost;
 
-            bool tryLeftFirst = ((x + y + currentFrame) & 1) == 0;
+            // Add randomization for natural look (Burst-compatible hash)
+            uint hash = HashPosition(x, y, currentFrame);
+            int randomOffset = (int)(hash % 3) - 1;  // -1, 0, or +1
+            spread = math.max(1, spread + randomOffset);
+
+            // Convert falling velocity to horizontal velocity when landing
+            if (wasFreeFalling && cell.velocityX == 0)
+            {
+                bool goLeft = (hash & 4) != 0;
+                cell.velocityX = (sbyte)(goLeft ? -4 : 4);
+            }
+
+            // Determine primary direction: follow existing horizontal velocity, or randomize
+            bool tryLeftFirst;
+            if (cell.velocityX < 0)
+                tryLeftFirst = true;
+            else if (cell.velocityX > 0)
+                tryLeftFirst = false;
+            else
+                tryLeftFirst = ((x + y + currentFrame) & 1) == 0;
+
             int dx1 = tryLeftFirst ? -1 : 1;
             int dx2 = tryLeftFirst ? 1 : -1;
 
-            // Try first direction
-            for (int dist = 1; dist <= spread; dist++)
+            // Find furthest reachable position in primary direction
+            int bestDist1 = FindSpreadDistance(x, y, dx1, spread, mat.density);
+
+            // Find furthest reachable position in secondary direction
+            int bestDist2 = FindSpreadDistance(x, y, dx2, spread, mat.density);
+
+            // Move to furthest valid position (prefer primary direction on tie)
+            if (bestDist1 > 0 && bestDist1 >= bestDist2)
             {
-                int targetX = x + dx1 * dist;
-                if (!IsInBounds(targetX, y))
-                    break;
-
-                if (CanMoveTo(targetX, y, mat.density))
-                {
-                    MoveCell(x, y, targetX, y, cell);
-                    return;
-                }
-
-                // Hit something solid, stop searching this direction
-                if (!IsEmpty(targetX, y))
-                    break;
+                // Dampen horizontal velocity over time
+                cell.velocityX = (sbyte)(cell.velocityX * 7 / 8);
+                cell.velocityY = 0;
+                MoveCell(x, y, x + dx1 * bestDist1, y, cell);
+                return;
+            }
+            else if (bestDist2 > 0)
+            {
+                // Reverse direction since we're going the other way
+                cell.velocityX = (sbyte)(-cell.velocityX * 7 / 8);
+                cell.velocityY = 0;
+                MoveCell(x, y, x + dx2 * bestDist2, y, cell);
+                return;
             }
 
-            // Try second direction
-            for (int dist = 1; dist <= spread; dist++)
-            {
-                int targetX = x + dx2 * dist;
-                if (!IsInBounds(targetX, y))
-                    break;
-
-                if (CanMoveTo(targetX, y, mat.density))
-                {
-                    MoveCell(x, y, targetX, y, cell);
-                    return;
-                }
-
-                if (!IsEmpty(targetX, y))
-                    break;
-            }
-
-            // Stuck - write back with zeroed velocity
+            // Stuck - dampen velocities
+            cell.velocityX = (sbyte)(cell.velocityX / 2);
             cell.velocityY = 0;
             cells[y * width + x] = cell;
         }
 
+        // Find how far liquid can spread in a direction
+        private int FindSpreadDistance(int x, int y, int dx, int maxSpread, byte density)
+        {
+            int bestDist = 0;
+            for (int dist = 1; dist <= maxSpread; dist++)
+            {
+                int targetX = x + dx * dist;
+                if (!IsInBounds(targetX, y))
+                    break;
+
+                if (CanMoveTo(targetX, y, density))
+                {
+                    bestDist = dist;
+                }
+                else if (!IsEmpty(targetX, y))
+                {
+                    // Hit solid obstacle, stop searching
+                    break;
+                }
+            }
+            return bestDist;
+        }
+
+        // Simple hash for randomization (Burst-compatible)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private uint HashPosition(int x, int y, ushort frame)
+        {
+            uint h = (uint)(x * 374761393 + y * 668265263 + frame * 2147483647);
+            h = (h ^ (h >> 13)) * 1274126177;
+            return h ^ (h >> 16);
+        }
+
         private void SimulateGas(int x, int y, Cell cell, MaterialDef mat)
         {
-            // Gases rise - negative gravity
-            cell.velocityY = (sbyte)math.max(cell.velocityY - 1, -16);
+            // Gases rise - negative gravity (only on certain frames for slow-motion effect)
+            if (currentFrame % gravityDivisor == 0)
+            {
+                cell.velocityY = (sbyte)math.max(cell.velocityY - 1, -16);
+            }
 
             int targetY = y + cell.velocityY; // velocityY is negative, so this goes up
 

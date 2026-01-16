@@ -13,6 +13,9 @@ namespace FallingSand
         [SerializeField] private int brushSize = 5;
         [SerializeField] private byte currentMaterial = Materials.Sand;
 
+        [Header("Simulation")]
+        [SerializeField] [Range(1, 10)] private int simulationSpeed = 1;  // 1 = every frame, 2 = every 2nd frame, etc.
+
         [Header("References")]
         [SerializeField] private Shader worldShader;
 
@@ -22,7 +25,7 @@ namespace FallingSand
         private Camera mainCamera;
 
         // Material names for display
-        private readonly string[] materialNames = { "Air", "Stone", "Sand", "Water", "Oil" };
+        private readonly string[] materialNames = { "Air", "Stone", "Sand", "Water", "Oil", "Steam" };
 
         // Input references
         private Mouse mouse;
@@ -32,6 +35,7 @@ namespace FallingSand
         public CellSimulatorJobbed Simulator => simulator;
         public byte CurrentMaterial => currentMaterial;
         public string CurrentMaterialName => currentMaterial < materialNames.Length ? materialNames[currentMaterial] : $"Material {currentMaterial}";
+        public int SimulationSpeed => simulationSpeed;
 
         private void Start()
         {
@@ -98,8 +102,9 @@ namespace FallingSand
             HandleInput();
             HandleMaterialSelection();
 
-            // Simulate physics (multithreaded)
-            simulator.Simulate(world);
+            // Simulate physics (multithreaded) every frame
+            // simulationSpeed controls gravity rate (1=full speed, higher=slower acceleration)
+            simulator.Simulate(world, simulationSpeed);
 
             // Upload texture changes
             cellRenderer.UploadFullTexture();
@@ -149,6 +154,13 @@ namespace FallingSand
             if (keyboard.digit3Key.wasPressedThisFrame) currentMaterial = Materials.Sand;
             if (keyboard.digit4Key.wasPressedThisFrame) currentMaterial = Materials.Water;
             if (keyboard.digit5Key.wasPressedThisFrame) currentMaterial = Materials.Oil;
+            if (keyboard.digit6Key.wasPressedThisFrame) currentMaterial = Materials.Steam;
+
+            // Numpad +/- to adjust simulation speed
+            if (keyboard.numpadPlusKey.wasPressedThisFrame)
+                simulationSpeed = Mathf.Clamp(simulationSpeed - 1, 1, 10);  // Faster (lower = more frequent)
+            if (keyboard.numpadMinusKey.wasPressedThisFrame)
+                simulationSpeed = Mathf.Clamp(simulationSpeed + 1, 1, 10);  // Slower (higher = less frequent)
         }
 
         private int paintLogCount = 0;
