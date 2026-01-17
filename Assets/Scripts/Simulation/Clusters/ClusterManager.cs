@@ -262,65 +262,117 @@ namespace FallingSand
         /// <summary>
         /// Displace a cell that's in the way of a cluster.
         /// Finds a nearby empty spot and gives the cell momentum.
+        /// Uses BFS to search further if immediate neighbors are occupied.
         /// </summary>
         private void DisplaceCell(Vector2Int fromPos, Cell cell, Vector2 clusterVelocity)
         {
-            // Check 8 neighbors for empty spot
-            // In cell coords: positive Y is down, positive X is right
-            // Priority: down (let it fall naturally), sides, then up
+            // Try to find an empty spot using BFS
+            Vector2Int? emptySpot = FindNearestEmptyCell(fromPos, maxSearchRadius: 16);
+
+            if (emptySpot.HasValue)
+            {
+                Vector2Int newPos = emptySpot.Value;
+                int newIndex = newPos.y * world.width + newPos.x;
+
+                // Convert cluster velocity to cell velocity
+                // Unity velocity: X positive = right, Y positive = up (world)
+                // Cell velocity: X positive = right (same), Y positive = down (flipped)
+                // Scale factor: ~2 world units per cell, velocity is cells/frame not units/second
+                float scaleFactor = displacementMomentumFactor * 0.5f;
+                cell.velocityX = (sbyte)Mathf.Clamp(
+                    clusterVelocity.x * scaleFactor,
+                    -PhysicsSettings.MaxVelocity, PhysicsSettings.MaxVelocity);
+                cell.velocityY = (sbyte)Mathf.Clamp(
+                    -clusterVelocity.y * scaleFactor,  // Negate Y for coordinate flip
+                    -PhysicsSettings.MaxVelocity, PhysicsSettings.MaxVelocity);
+                cell.ownerId = 0;
+                cell.frameUpdated = world.currentFrame;
+
+                world.cells[newIndex] = cell;
+                world.MarkDirty(newPos.x, newPos.y);
+
+                DisplacementsThisFrame++;
+
+                if (logDisplacements)
+                {
+                    Debug.Log($"[Cluster] Displaced cell {cell.materialId} from {fromPos} to {newPos}");
+                }
+            }
+            else
+            {
+                // No space found within search radius - cell is lost
+                // This should be rare now with larger search radius
+                if (logDisplacements)
+                {
+                    Debug.LogWarning($"[Cluster] Cell {cell.materialId} at {fromPos} lost - no empty space found!");
+                }
+            }
+        }
+
+        // Reusable collections for BFS to avoid allocations
+        private Queue<Vector2Int> bfsQueue = new Queue<Vector2Int>();
+        private HashSet<long> bfsVisited = new HashSet<long>();
+
+        /// <summary>
+        /// Find the nearest empty cell using BFS, prioritizing downward movement.
+        /// </summary>
+        private Vector2Int? FindNearestEmptyCell(Vector2Int start, int maxSearchRadius)
+        {
+            bfsQueue.Clear();
+            bfsVisited.Clear();
+
+            bfsQueue.Enqueue(start);
+            bfsVisited.Add(((long)start.x << 32) | (uint)start.y);
+
+            // Direction offsets - prioritize down, then sides, then up
             Vector2Int[] offsets = new Vector2Int[]
             {
                 new Vector2Int(0, 1),    // down (positive Y in cell coords)
-                new Vector2Int(-1, 0),   // left
-                new Vector2Int(1, 0),    // right
                 new Vector2Int(-1, 1),   // down-left
                 new Vector2Int(1, 1),    // down-right
-                new Vector2Int(0, -1),   // up (negative Y in cell coords)
+                new Vector2Int(-1, 0),   // left
+                new Vector2Int(1, 0),    // right
+                new Vector2Int(0, -1),   // up
                 new Vector2Int(-1, -1),  // up-left
                 new Vector2Int(1, -1),   // up-right
             };
 
-            foreach (var offset in offsets)
+            while (bfsQueue.Count > 0)
             {
-                Vector2Int newPos = fromPos + offset;
+                Vector2Int current = bfsQueue.Dequeue();
 
-                if (!world.IsInBounds(newPos.x, newPos.y))
+                // Check if too far from start
+                int dist = Mathf.Abs(current.x - start.x) + Mathf.Abs(current.y - start.y);
+                if (dist > maxSearchRadius)
                     continue;
 
-                int newIndex = newPos.y * world.width + newPos.x;
-                Cell target = world.cells[newIndex];
-
-                if (target.materialId == Materials.Air)
+                foreach (var offset in offsets)
                 {
-                    // Convert cluster velocity to cell velocity
-                    // Unity velocity: X positive = right, Y positive = up (world)
-                    // Cell velocity: X positive = right (same), Y positive = down (flipped)
-                    // Scale factor: ~2 world units per cell, velocity is cells/frame not units/second
-                    float scaleFactor = displacementMomentumFactor * 0.5f; // rough conversion
-                    cell.velocityX = (sbyte)Mathf.Clamp(
-                        clusterVelocity.x * scaleFactor,
-                        -PhysicsSettings.MaxVelocity, PhysicsSettings.MaxVelocity);
-                    cell.velocityY = (sbyte)Mathf.Clamp(
-                        -clusterVelocity.y * scaleFactor,  // Negate Y for coordinate flip
-                        -PhysicsSettings.MaxVelocity, PhysicsSettings.MaxVelocity);
-                    cell.ownerId = 0;
-                    cell.frameUpdated = world.currentFrame;
+                    Vector2Int neighbor = current + offset;
 
-                    world.cells[newIndex] = cell;
-                    world.MarkDirty(newPos.x, newPos.y);
+                    // Bounds check
+                    if (!world.IsInBounds(neighbor.x, neighbor.y))
+                        continue;
 
-                    DisplacementsThisFrame++;
+                    // Visited check
+                    long key = ((long)neighbor.x << 32) | (uint)neighbor.y;
+                    if (bfsVisited.Contains(key))
+                        continue;
+                    bfsVisited.Add(key);
 
-                    if (logDisplacements)
+                    // Check if empty
+                    int index = neighbor.y * world.width + neighbor.x;
+                    if (world.cells[index].materialId == Materials.Air)
                     {
-                        Debug.Log($"[Cluster] Displaced cell {cell.materialId} from {fromPos} to {newPos}");
+                        return neighbor;
                     }
-                    return;
+
+                    // Not empty, but add to queue to explore further
+                    bfsQueue.Enqueue(neighbor);
                 }
             }
 
-            // No space found - cell is lost (could spawn particle effect here)
-            DisplacementsThisFrame++;
+            return null; // No empty cell found within radius
         }
 
         private void OnDestroy()
