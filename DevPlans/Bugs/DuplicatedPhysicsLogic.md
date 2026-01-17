@@ -1,5 +1,11 @@
 # Duplicated Physics Simulation Logic Analysis
 
+## Status: RESOLVED
+
+**Resolution:** `CellSimulator.cs` was deleted in commit `8e15d48` on 2026-01-17.
+
+---
+
 ## Overview
 
 This document analyzes the duplication between `CellSimulator.cs` and `SimulateChunksJob.cs`, two implementations of the falling sand physics simulation. The job-based version has evolved beyond the original implementation with more sophisticated behavior, creating a maintenance risk.
@@ -306,7 +312,7 @@ Mark `CellSimulator.cs` as obsolete and keep for debugging.
 
 ## Recommendation
 
-**Delete `CellSimulator.cs` entirely (Option 1).**
+**Delete `CellSimulator.cs` entirely (Option 1).** ✅ DONE
 
 Rationale:
 1. It is not used anywhere in the codebase
@@ -316,13 +322,12 @@ Rationale:
 
 ---
 
-## Files to Modify
+## Resolution
 
-| Action | File | Notes |
-|--------|------|-------|
-| DELETE | `G:\Sandy\Assets\Scripts\Simulation\CellSimulator.cs` | Dead code |
-| DELETE | `G:\Sandy\Assets\Scripts\Simulation\CellSimulator.cs.meta` | Unity meta file |
-| VERIFY | Git status already shows both files as deleted | Confirm changes are staged |
+| Action | File | Status |
+|--------|------|--------|
+| DELETED | `G:\Sandy\Assets\Scripts\Simulation\CellSimulator.cs` | ✅ Commit `8e15d48` |
+| DELETED | `G:\Sandy\Assets\Scripts\Simulation\CellSimulator.cs.meta` | ✅ Auto-removed by Unity |
 
 ---
 
@@ -348,11 +353,11 @@ Rationale:
 
 ## Conclusion
 
-The `CellSimulator.cs` file is dead code that duplicates (and is inferior to) the logic in `SimulateChunksJob.cs`. The jobbed version has evolved with:
+The `CellSimulator.cs` file was dead code that duplicated (and was inferior to) the logic in `SimulateChunksJob.cs`. The jobbed version has evolved with:
 - Sophisticated momentum-based liquid spreading
 - Velocity dampening and horizontal momentum transfer
 - Cluster ownership checks for rigid body integration
 - Simulation speed control via gravity divisor
 - Randomized spread for natural-looking fluid behavior
 
-The recommended action is to **delete `CellSimulator.cs`** entirely, as it provides no value and violates the project's architectural principles.
+**Action taken:** `CellSimulator.cs` was deleted in commit `8e15d48`, eliminating the duplication and establishing `SimulateChunksJob.cs` as the single source of truth for physics simulation.
