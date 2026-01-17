@@ -41,7 +41,7 @@ namespace FallingSand
         public Color32 baseColour;      // RGBA for rendering
         public byte colourVariation;    // Random variation amount
         public byte dispersionRate;     // Base horizontal spread for liquids (0-255)
-        public byte padding2;
+        public byte emission;           // Glow intensity for emissive materials (0-255)
         public byte padding3;
     }
 

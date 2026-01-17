@@ -16,7 +16,7 @@ namespace FallingSand
 
         [Header("Test Spawning")]
         public byte testMaterial = Materials.Stone;
-        public int testSize = 5;
+        public int testSize = 15;
 
         private Mouse mouse;
         private Keyboard keyboard;

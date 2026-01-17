@@ -124,7 +124,7 @@ namespace FallingSand
         private static void SimulatePowder(CellWorld world, int x, int y, Cell cell, MaterialDef mat)
         {
             // Apply gravity
-            cell.velocityY = (sbyte)math.min(cell.velocityY + 1, 16);
+            cell.velocityY = (sbyte)math.min(cell.velocityY + (int)PhysicsSettings.Gravity, PhysicsSettings.MaxVelocity);
 
             // Try to move down by velocity
             int targetY = y + cell.velocityY;
@@ -173,7 +173,7 @@ namespace FallingSand
         private static void SimulateLiquid(CellWorld world, int x, int y, Cell cell, MaterialDef mat)
         {
             // Apply gravity
-            cell.velocityY = (sbyte)math.min(cell.velocityY + 1, 16);
+            cell.velocityY = (sbyte)math.min(cell.velocityY + (int)PhysicsSettings.Gravity, PhysicsSettings.MaxVelocity);
 
             // Try falling first
             if (TryFall(world, x, y, cell, mat.density))
@@ -183,7 +183,7 @@ namespace FallingSand
                 return;
 
             // Spread horizontally
-            int spread = math.max(1, (16 - math.abs(cell.velocityY)) / (mat.friction + 1));
+            int spread = math.max(1, (PhysicsSettings.MaxVelocity - math.abs(cell.velocityY)) / (mat.friction + 1));
 
             bool tryLeftFirst = ((x + y + world.currentFrame) & 1) == 0;
             int dx1 = tryLeftFirst ? -1 : 1;
@@ -232,7 +232,7 @@ namespace FallingSand
         private static void SimulateGas(CellWorld world, int x, int y, Cell cell, MaterialDef mat)
         {
             // Gases rise - negative gravity
-            cell.velocityY = (sbyte)math.max(cell.velocityY - 1, -16);
+            cell.velocityY = (sbyte)math.max(cell.velocityY - (int)PhysicsSettings.Gravity, -PhysicsSettings.MaxVelocity);
 
             int targetY = y + cell.velocityY; // velocityY is negative, so this goes up
 

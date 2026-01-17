@@ -108,6 +108,11 @@ namespace FallingSand
             return cells[y * width + x].materialId;
         }
 
+        public bool IsInBounds(int x, int y)
+        {
+            return x >= 0 && x < width && y >= 0 && y < height;
+        }
+
         public void MarkDirty(int cellX, int cellY)
         {
             int chunkX = cellX / ChunkSize;

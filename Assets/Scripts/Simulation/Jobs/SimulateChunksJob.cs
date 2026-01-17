@@ -40,6 +40,10 @@ namespace FallingSand
         // Gravity divisor: 1=full speed, 2=half gravity rate, etc.
         public int gravityDivisor;
 
+        // Physics constants from PhysicsSettings (passed in because Burst can't access static fields)
+        public int gravity;      // Gravity acceleration in cells/frame² (usually 1)
+        public int maxVelocity;  // Maximum velocity in cells/frame (usually 16)
+
         // Buffer size around each chunk
         private const int BufferSize = 16;
         private const int ChunkSize = 32;
@@ -95,6 +99,10 @@ namespace FallingSand
             if (cell.materialId == Materials.Air)
                 return;
 
+            // Skip cells owned by clusters (rigid bodies) - they move as a unit
+            if (cell.ownerId != 0)
+                return;
+
             MaterialDef mat = materials[cell.materialId];
 
             // Skip static materials
@@ -124,7 +132,7 @@ namespace FallingSand
             // Apply gravity (only on certain frames for slow-motion effect)
             if (currentFrame % gravityDivisor == 0)
             {
-                cell.velocityY = (sbyte)math.min(cell.velocityY + 1, 16);
+                cell.velocityY = (sbyte)math.min(cell.velocityY + gravity, maxVelocity);
             }
 
             // Try to move down by velocity
@@ -179,7 +187,7 @@ namespace FallingSand
             // Apply gravity (only on certain frames for slow-motion effect)
             if (currentFrame % gravityDivisor == 0)
             {
-                cell.velocityY = (sbyte)math.min(cell.velocityY + 1, 16);
+                cell.velocityY = (sbyte)math.min(cell.velocityY + gravity, maxVelocity);
             }
 
             // Try falling first
@@ -285,7 +293,7 @@ namespace FallingSand
             // Gases rise - negative gravity (only on certain frames for slow-motion effect)
             if (currentFrame % gravityDivisor == 0)
             {
-                cell.velocityY = (sbyte)math.max(cell.velocityY - 1, -16);
+                cell.velocityY = (sbyte)math.max(cell.velocityY - gravity, -maxVelocity);
             }
 
             int targetY = y + cell.velocityY; // velocityY is negative, so this goes up

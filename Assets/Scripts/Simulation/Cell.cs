@@ -11,9 +11,10 @@ namespace FallingSand
         public sbyte velocityX;      // Horizontal velocity (-16 to +16 cells)
         public sbyte velocityY;      // Vertical velocity (-16 to +16 cells)
         public byte temperature;     // 0-255 for heat simulation
-        public byte structureId;     // If attached to a structure, which one (0 = none)
+        public byte structureId;     // If attached to a structure/building, which one (0 = none)
+        public ushort ownerId;       // If owned by a cluster (rigid body), which one (0 = free cell)
     }
-    // Size: 8 bytes per cell
+    // Size: 10 bytes per cell
 
     public static class CellFlags
     {

@@ -38,12 +38,23 @@ namespace FallingSand
         /// </summary>
         /// <param name="world">The cell world to simulate</param>
         /// <param name="gravityDivisor">Controls gravity rate: 1=full speed, 2=half speed, etc.</param>
-        public void Simulate(CellWorld world, int gravityDivisor = 1)
+        /// <param name="clusterManager">Optional cluster manager for rigid body physics</param>
+        public void Simulate(CellWorld world, int gravityDivisor = 1, ClusterManager clusterManager = null)
         {
             stopwatch.Restart();
 
             world.currentFrame++;
 
+            // ========== CLUSTER PHYSICS (runs before cell simulation) ==========
+            // Step 1: Clear old cluster pixels from grid
+            // Step 2: Step Unity physics (Physics2D.Simulate)
+            // Step 3: Sync cluster pixels to grid at new positions
+            if (clusterManager != null)
+            {
+                clusterManager.StepAndSync(UnityEngine.Time.fixedDeltaTime);
+            }
+
+            // ========== CELL SIMULATION ==========
             // Collect active chunks into groups
             world.CollectChunkGroups(groupA, groupB, groupC, groupD);
 
@@ -86,6 +97,8 @@ namespace FallingSand
                 chunksY = world.chunksY,
                 currentFrame = world.currentFrame,
                 gravityDivisor = gravityDivisor,
+                gravity = (int)PhysicsSettings.Gravity,
+                maxVelocity = PhysicsSettings.MaxVelocity,
             };
 
             // innerLoopBatchCount = 1 means each chunk is processed by one thread

@@ -7,20 +7,19 @@ namespace FallingSand
         [Header("References")]
         [SerializeField] private Shader worldShader;
 
-        [Header("Debug Visualization")]
-        [SerializeField] private bool showDirtyRects = true;
-        [SerializeField] private Color dirtyRectColor = Color.red;
-
         private CellWorld world;
-        private Material lineMaterial;
         private Texture2D cellTexture;
         private Texture2D paletteTexture;
+        private Texture2D variationTexture;
+        private Texture2D emissionTexture;
+        private Texture2D densityTexture;
         private Material renderMaterial;
         private MeshRenderer meshRenderer;
         private MeshFilter meshFilter;
 
         // Buffer for texture upload
         private Color32[] textureBuffer;
+        private Color32[] densityBuffer;
 
         public void Initialize(CellWorld world)
         {
@@ -29,31 +28,11 @@ namespace FallingSand
 
             CreateTextures();
             CreateMaterial();
-            CreateLineMaterial();
             CreateQuad();
             BuildPalette();
             UploadFullTexture();
 
             Debug.Log("[CellRenderer] Initialize() complete");
-        }
-
-        private void CreateLineMaterial()
-        {
-            // Create a simple unlit material for GL line drawing
-            Shader lineShader = Shader.Find("Hidden/Internal-Colored");
-            if (lineShader == null)
-            {
-                Debug.LogError("[CellRenderer] Could not find line shader, dirty rect visualization disabled");
-                return;
-            }
-
-            lineMaterial = new Material(lineShader);
-            lineMaterial.hideFlags = HideFlags.HideAndDontSave;
-            lineMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            lineMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            lineMaterial.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
-            lineMaterial.SetInt("_ZWrite", 0);
-            Debug.Log("[CellRenderer] Line material created successfully");
         }
 
         private void CreateTextures()
@@ -210,73 +189,6 @@ namespace FallingSand
             }
         }
 
-        /// <summary>
-        /// Draws debug lines for dirty rects. Call from Update or LateUpdate.
-        /// Enable Gizmos in Game view to see the lines.
-        /// </summary>
-        public void DrawDirtyRects()
-        {
-            if (!showDirtyRects || world == null)
-                return;
-
-            int rectsDrawn = 0;
-
-            // Draw dirty bounds for each active chunk
-            for (int i = 0; i < world.chunks.Length; i++)
-            {
-                ChunkState chunk = world.chunks[i];
-
-                // Only draw for dirty or recently active chunks
-                if ((chunk.flags & ChunkFlags.IsDirty) == 0 && chunk.activeLastFrame == 0)
-                    continue;
-
-                int chunkX = i % world.chunksX;
-                int chunkY = i / world.chunksX;
-
-                // Calculate cell coordinates
-                int baseCellX = chunkX * CellWorld.ChunkSize;
-                int baseCellY = chunkY * CellWorld.ChunkSize;
-
-                int minCellX, maxCellX, minCellY, maxCellY;
-
-                // If bounds are inverted, draw entire chunk border
-                if (chunk.minX > chunk.maxX)
-                {
-                    minCellX = baseCellX;
-                    maxCellX = baseCellX + CellWorld.ChunkSize;
-                    minCellY = baseCellY;
-                    maxCellY = baseCellY + CellWorld.ChunkSize;
-                }
-                else
-                {
-                    minCellX = baseCellX + chunk.minX;
-                    maxCellX = baseCellX + chunk.maxX + 1;
-                    minCellY = baseCellY + chunk.minY;
-                    maxCellY = baseCellY + chunk.maxY + 1;
-                }
-
-                // Convert cell coords to world coords
-                // Cells are displayed as 2x2 pixels, quad is centered at origin
-                float x1 = minCellX * 2f - world.width;
-                float x2 = maxCellX * 2f - world.width;
-                float y1 = world.height - maxCellY * 2f;  // Flip Y (cell Y=0 is top)
-                float y2 = world.height - minCellY * 2f;
-
-                // Draw rectangle using Debug.DrawLine (visible with Gizmos enabled)
-                Vector3 bl = new Vector3(x1, y1, 0);
-                Vector3 br = new Vector3(x2, y1, 0);
-                Vector3 tr = new Vector3(x2, y2, 0);
-                Vector3 tl = new Vector3(x1, y2, 0);
-
-                Debug.DrawLine(bl, br, dirtyRectColor);
-                Debug.DrawLine(br, tr, dirtyRectColor);
-                Debug.DrawLine(tr, tl, dirtyRectColor);
-                Debug.DrawLine(tl, bl, dirtyRectColor);
-
-                rectsDrawn++;
-            }
-        }
-
         private void OnDestroy()
         {
             if (cellTexture != null)
@@ -290,10 +202,6 @@ namespace FallingSand
             if (renderMaterial != null)
             {
                 Destroy(renderMaterial);
-            }
-            if (lineMaterial != null)
-            {
-                Destroy(lineMaterial);
             }
         }
     }

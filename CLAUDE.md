@@ -25,3 +25,23 @@
 2. Where should this logic live? (Single responsibility)
 3. Will other systems need this? (Design for reuse)
 4. Am I adding a special case or extending a system? (Prefer the latter)
+
+---
+
+## Debug Overlay System
+
+All debug visualization and metrics display goes through the unified `DebugOverlay` system in `Assets/Scripts/Debug/`.
+
+**To add new debug information:**
+1. Create a new class in `Assets/Scripts/Debug/Sections/` that extends `DebugSectionBase`
+2. Implement `SectionName`, `Priority`, `DrawGUI()`, and optionally `DrawGizmos()` and `UpdateCachedValues()`
+3. Register it in `SandboxController.Start()` via `debugOverlay.RegisterSection(new YourSection(...))`
+
+**DO NOT:**
+- Create standalone `OnGUI()` methods for debug display
+- Use `Debug.DrawLine()` directly for visualization (use gizmos in a debug section)
+- Create new MonoBehaviours just for debug visualization
+
+**Controls:**
+- F3: Toggle overlay visibility
+- F4: Toggle gizmos visibility

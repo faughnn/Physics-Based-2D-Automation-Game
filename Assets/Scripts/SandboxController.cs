@@ -1,5 +1,8 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using FallingSand.Debugging;
+using FallingSand.Graphics;
+using FallingSand.UI;
 
 namespace FallingSand
 {
@@ -13,8 +16,7 @@ namespace FallingSand
         [SerializeField] private int brushSize = 5;
         [SerializeField] private byte currentMaterial = Materials.Sand;
 
-        [Header("Simulation")]
-        [SerializeField] [Range(1, 10)] private int simulationSpeed = 1;  // 1 = every frame, 2 = every 2nd frame, etc.
+        // Simulation speed is now in PhysicsSettings (shared with cluster physics)
 
         [Header("References")]
         [SerializeField] private Shader worldShader;
@@ -22,6 +24,10 @@ namespace FallingSand
         private CellWorld world;
         private CellRenderer cellRenderer;
         private CellSimulatorJobbed simulator;
+        private ClusterManager clusterManager;
+        private ClusterTestSpawner clusterTestSpawner;
+        private TerrainColliderManager terrainColliders;
+        private DebugOverlay debugOverlay;
         private Camera mainCamera;
 
         // Material names for display
@@ -35,7 +41,7 @@ namespace FallingSand
         public CellSimulatorJobbed Simulator => simulator;
         public byte CurrentMaterial => currentMaterial;
         public string CurrentMaterialName => currentMaterial < materialNames.Length ? materialNames[currentMaterial] : $"Material {currentMaterial}";
-        public int SimulationSpeed => simulationSpeed;
+        public int SimulationSpeed => PhysicsSettings.SimulationSpeed;
 
         private void Start()
         {
@@ -55,6 +61,23 @@ namespace FallingSand
             simulator = new CellSimulatorJobbed();
             Debug.Log("[SandboxController] CellSimulatorJobbed created");
 
+            // Create cluster manager (handles rigid body physics)
+            Debug.Log("[SandboxController] Creating ClusterManager...");
+            GameObject clusterManagerObj = new GameObject("ClusterManager");
+            clusterManager = clusterManagerObj.AddComponent<ClusterManager>();
+            clusterManager.Initialize(world);
+            Debug.Log("[SandboxController] ClusterManager created (Physics2D.autoSimulation disabled)");
+
+            // Create cluster test spawner (handles 7/8/9 key spawning)
+            clusterTestSpawner = clusterManagerObj.AddComponent<ClusterTestSpawner>();
+            clusterTestSpawner.clusterManager = clusterManager;
+            clusterTestSpawner.world = world;
+
+            // Create terrain collider manager (for cluster-terrain collisions)
+            terrainColliders = clusterManagerObj.AddComponent<TerrainColliderManager>();
+            terrainColliders.Initialize(world);
+            Debug.Log("[SandboxController] TerrainColliderManager created");
+
             // Create renderer
             Debug.Log("[SandboxController] Creating CellRenderer...");
             GameObject rendererObj = new GameObject("CellRenderer");
@@ -67,7 +90,22 @@ namespace FallingSand
             SetupCamera();
             Debug.Log($"[SandboxController] Camera setup complete. Ortho size: {mainCamera.orthographicSize}, Pos: {mainCamera.transform.position}");
 
+            // Give test spawner camera reference
+            clusterTestSpawner.mainCamera = mainCamera;
+
+            // Create unified debug overlay
+            GameObject debugObj = new GameObject("DebugOverlay");
+            debugOverlay = debugObj.AddComponent<DebugOverlay>();
+
+            // Register debug sections
+            debugOverlay.RegisterSection(new SimulationDebugSection(this));
+            debugOverlay.RegisterSection(new WorldDebugSection(world));
+            debugOverlay.RegisterSection(new ClusterDebugSection(clusterManager, world));
+            debugOverlay.RegisterSection(new InputDebugSection(this));
+
             Debug.Log($"[SandboxController] === READY === World: {worldWidth}x{worldHeight} cells ({world.chunksX}x{world.chunksY} chunks)");
+            Debug.Log("[SandboxController] Cluster controls: 7=Circle, 8=Square, 9=L-Shape, [/]=Size");
+            Debug.Log("[SandboxController] Debug overlay: F3=Toggle, F4=Gizmos");
         }
 
         private void SetupCamera()
@@ -103,14 +141,12 @@ namespace FallingSand
             HandleMaterialSelection();
 
             // Simulate physics (multithreaded) every frame
-            // simulationSpeed controls gravity rate (1=full speed, higher=slower acceleration)
-            simulator.Simulate(world, simulationSpeed);
+            // SimulationSpeed controls gravity rate (1=full speed, higher=slower acceleration)
+            // clusterManager handles rigid body physics before cell simulation
+            simulator.Simulate(world, PhysicsSettings.SimulationSpeed, clusterManager);
 
             // Upload texture changes
             cellRenderer.UploadFullTexture();
-
-            // Draw dirty rect debug visualization (enable Gizmos in Game view to see)
-            cellRenderer.DrawDirtyRects();
 
             // Log active chunks periodically
             if (frameCount % 60 == 0)
@@ -156,11 +192,13 @@ namespace FallingSand
             if (keyboard.digit5Key.wasPressedThisFrame) currentMaterial = Materials.Oil;
             if (keyboard.digit6Key.wasPressedThisFrame) currentMaterial = Materials.Steam;
 
-            // Numpad +/- to adjust simulation speed
+            // Numpad +/- to adjust simulation speed (shared with cluster physics)
             if (keyboard.numpadPlusKey.wasPressedThisFrame)
-                simulationSpeed = Mathf.Clamp(simulationSpeed - 1, 1, 10);  // Faster (lower = more frequent)
+                PhysicsSettings.SimulationSpeed = Mathf.Clamp(PhysicsSettings.SimulationSpeed - 1,
+                    PhysicsSettings.MinSimulationSpeed, PhysicsSettings.MaxSimulationSpeed);  // Faster
             if (keyboard.numpadMinusKey.wasPressedThisFrame)
-                simulationSpeed = Mathf.Clamp(simulationSpeed + 1, 1, 10);  // Slower (higher = less frequent)
+                PhysicsSettings.SimulationSpeed = Mathf.Clamp(PhysicsSettings.SimulationSpeed + 1,
+                    PhysicsSettings.MinSimulationSpeed, PhysicsSettings.MaxSimulationSpeed);  // Slower
         }
 
         private int paintLogCount = 0;
@@ -185,13 +223,30 @@ namespace FallingSand
 
             // Paint a circular brush
             int cellsPainted = 0;
+
+            // Check if we're painting/erasing static materials (need to update terrain colliders)
+            bool affectsColliders = materialId == Materials.Stone || materialId == Materials.Air;
+
             for (int dy = -brushSize; dy <= brushSize; dy++)
             {
                 for (int dx = -brushSize; dx <= brushSize; dx++)
                 {
                     if (dx * dx + dy * dy <= brushSize * brushSize)
                     {
-                        world.SetCell(cellX + dx, cellY + dy, materialId);
+                        int px = cellX + dx;
+                        int py = cellY + dy;
+
+                        // Check if we're modifying static material
+                        if (affectsColliders && world.IsInBounds(px, py))
+                        {
+                            byte existingMat = world.GetCell(px, py);
+                            if (existingMat == Materials.Stone || materialId == Materials.Stone)
+                            {
+                                terrainColliders.MarkChunkDirtyAt(px, py);
+                            }
+                        }
+
+                        world.SetCell(px, py, materialId);
                         cellsPainted++;
                     }
                 }
