@@ -15,7 +15,8 @@ namespace FallingSand.Debugging
         VelocityVectors = 1 << 2,
         PixelPositions = 1 << 3,
         BoundingCircles = 1 << 4,
-        All = PolygonOutlines | CenterOfMass | VelocityVectors | PixelPositions | BoundingCircles
+        SleepState = 1 << 5,
+        All = PolygonOutlines | CenterOfMass | VelocityVectors | PixelPositions | BoundingCircles | SleepState
     }
 
     /// <summary>
@@ -35,6 +36,8 @@ namespace FallingSand.Debugging
         private int cachedDisplacements;
         private float cachedPhysicsMs;
         private float cachedSyncMs;
+        private int cachedSleepingCount;
+        private int cachedSkippedSyncCount;
 
         /// <summary>
         /// Which gizmos to display.
@@ -42,7 +45,8 @@ namespace FallingSand.Debugging
         public ClusterGizmoFlags GizmoFlags { get; set; } =
             ClusterGizmoFlags.PolygonOutlines |
             ClusterGizmoFlags.CenterOfMass |
-            ClusterGizmoFlags.VelocityVectors;
+            ClusterGizmoFlags.VelocityVectors |
+            ClusterGizmoFlags.SleepState;
 
         public ClusterDebugSection(ClusterManager clusterManager, CellWorld world)
         {
@@ -59,17 +63,24 @@ namespace FallingSand.Debugging
                 cachedDisplacements = clusterManager.DisplacementsThisFrame;
                 cachedPhysicsMs = clusterManager.PhysicsTimeMs;
                 cachedSyncMs = clusterManager.SyncTimeMs;
+                cachedSleepingCount = clusterManager.SleepingCount;
+                cachedSkippedSyncCount = clusterManager.SkippedSyncCount;
             }
         }
 
         public override int DrawGUI(GUIStyle labelStyle, float x, float y, float lineHeight)
         {
-            if (labelStyle == null) return 5;
+            if (labelStyle == null) return 7;
 
             float width = 260f;
             int lines = 0;
 
             DrawLabel($"Active Clusters: {cachedActiveCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
+            lines++;
+
+            // Sleep status with color coding (green = all sleeping)
+            Color sleepColor = cachedActiveCount > 0 && cachedSleepingCount == cachedActiveCount ? Color.green : Color.white;
+            DrawLabel($"Sleeping: {cachedSleepingCount}/{cachedActiveCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, sleepColor);
             lines++;
 
             DrawLabel($"Total Pixels: {cachedTotalPixels}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
@@ -82,8 +93,10 @@ namespace FallingSand.Debugging
             DrawLabel($"Physics: {cachedPhysicsMs:F2}ms", x, y + lines * lineHeight, width, lineHeight, labelStyle, physicsColor);
             lines++;
 
+            // Sync time with skipped count
             Color syncColor = GetPerformanceColor(cachedSyncMs, 1f, 3f);
-            DrawLabel($"Sync: {cachedSyncMs:F2}ms", x, y + lines * lineHeight, width, lineHeight, labelStyle, syncColor);
+            string skipText = cachedSkippedSyncCount > 0 ? $" (skipped: {cachedSkippedSyncCount})" : "";
+            DrawLabel($"Sync: {cachedSyncMs:F2}ms{skipText}", x, y + lines * lineHeight, width, lineHeight, labelStyle, syncColor);
             lines++;
 
             return lines;
@@ -116,12 +129,22 @@ namespace FallingSand.Debugging
                     Gizmos.DrawWireSphere(com, 2f);
                 }
 
-                // Velocity vector (red arrow)
+                // Sleep state indicator (gray sphere when sleeping)
+                if ((GizmoFlags & ClusterGizmoFlags.SleepState) != 0 && cluster.rb != null)
+                {
+                    if (cluster.rb.IsSleeping())
+                    {
+                        Gizmos.color = new Color(0.5f, 0.5f, 0.5f, 0.6f);
+                        Gizmos.DrawSphere(pos3, 3f);
+                    }
+                }
+
+                // Velocity vector (red arrow) - only show when above sleep threshold to avoid flicker
                 if ((GizmoFlags & ClusterGizmoFlags.VelocityVectors) != 0 && cluster.rb != null)
                 {
                     Gizmos.color = Color.red;
                     Vector3 vel = new Vector3(cluster.Velocity.x, cluster.Velocity.y, 0);
-                    if (vel.magnitude > 0.5f)
+                    if (vel.magnitude > PhysicsSettings.LinearSleepTolerance)
                     {
                         Gizmos.DrawLine(pos3, pos3 + vel);
                         // Arrowhead

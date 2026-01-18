@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.UI;
+using UnityEngine.EventSystems;
 using FallingSand.Graphics;
 using FallingSand.Graphics.Effects;
 
@@ -61,6 +63,15 @@ namespace FallingSand.UI
 
         private void CreateUI()
         {
+            // Create EventSystem if one doesn't exist (required for UI input)
+            if (FindFirstObjectByType<EventSystem>() == null)
+            {
+                GameObject eventSystemObj = new GameObject("EventSystem");
+                eventSystemObj.AddComponent<EventSystem>();
+                eventSystemObj.AddComponent<InputSystemUIInputModule>();
+                Debug.Log("[SettingsMenu] EventSystem created");
+            }
+
             // Create Canvas
             GameObject canvasObj = new GameObject("SettingsCanvas");
             canvasObj.transform.SetParent(transform);
@@ -167,11 +178,16 @@ namespace FallingSand.UI
             RectTransform rect = toggleObj.AddComponent<RectTransform>();
             rect.sizeDelta = new Vector2(PanelWidth - PanelPadding * 2, ToggleHeight);
 
+            LayoutElement rowLayout = toggleObj.AddComponent<LayoutElement>();
+            rowLayout.minHeight = ToggleHeight;
+            rowLayout.preferredHeight = ToggleHeight;
+
             HorizontalLayoutGroup hLayout = toggleObj.AddComponent<HorizontalLayoutGroup>();
+            hLayout.padding = new RectOffset(5, 5, 0, 0);
             hLayout.spacing = 10f;
             hLayout.childAlignment = TextAnchor.MiddleLeft;
             hLayout.childControlWidth = false;
-            hLayout.childControlHeight = true;
+            hLayout.childControlHeight = false;
             hLayout.childForceExpandWidth = false;
             hLayout.childForceExpandHeight = false;
 
@@ -182,8 +198,15 @@ namespace FallingSand.UI
             RectTransform checkRect = checkboxObj.AddComponent<RectTransform>();
             checkRect.sizeDelta = new Vector2(ToggleHeight, ToggleHeight);
 
+            // LayoutElement ensures the checkbox maintains size in the layout group
+            LayoutElement checkLayout = checkboxObj.AddComponent<LayoutElement>();
+            checkLayout.minWidth = ToggleHeight;
+            checkLayout.minHeight = ToggleHeight;
+            checkLayout.preferredWidth = ToggleHeight;
+            checkLayout.preferredHeight = ToggleHeight;
+
             Image checkBg = checkboxObj.AddComponent<Image>();
-            checkBg.color = new Color(0.2f, 0.2f, 0.25f);
+            checkBg.color = new Color(0.3f, 0.3f, 0.35f);
 
             Toggle toggle = checkboxObj.AddComponent<Toggle>();
 
@@ -192,13 +215,13 @@ namespace FallingSand.UI
             checkmarkObj.transform.SetParent(checkboxObj.transform, false);
 
             RectTransform checkmarkRect = checkmarkObj.AddComponent<RectTransform>();
-            checkmarkRect.anchorMin = Vector2.zero;
-            checkmarkRect.anchorMax = Vector2.one;
-            checkmarkRect.offsetMin = new Vector2(5, 5);
-            checkmarkRect.offsetMax = new Vector2(-5, -5);
+            checkmarkRect.anchorMin = new Vector2(0.5f, 0.5f);
+            checkmarkRect.anchorMax = new Vector2(0.5f, 0.5f);
+            checkmarkRect.pivot = new Vector2(0.5f, 0.5f);
+            checkmarkRect.sizeDelta = new Vector2(ToggleHeight - 10, ToggleHeight - 10);
 
             Image checkmark = checkmarkObj.AddComponent<Image>();
-            checkmark.color = new Color(0.4f, 0.8f, 0.4f);
+            checkmark.color = new Color(0.3f, 0.9f, 0.3f);
 
             toggle.graphic = checkmark;
             toggle.isOn = effect.IsEnabled;

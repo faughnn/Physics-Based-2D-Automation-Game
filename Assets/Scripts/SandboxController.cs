@@ -100,6 +100,16 @@ namespace FallingSand
             debugOverlay.RegisterSection(new ClusterDebugSection(clusterManager, world));
             debugOverlay.RegisterSection(new InputDebugSection(this));
 
+            // Create graphics manager (handles visual effects)
+            GameObject graphicsObj = new GameObject("GraphicsManager");
+            graphicsObj.AddComponent<GraphicsManager>();
+            Debug.Log("[SandboxController] GraphicsManager created");
+
+            // Create settings menu (ESC to toggle)
+            GameObject settingsObj = new GameObject("SettingsMenu");
+            settingsObj.AddComponent<SettingsMenu>();
+            Debug.Log("[SandboxController] SettingsMenu created");
+
             Debug.Log($"[SandboxController] === READY === World: {worldWidth}x{worldHeight} cells ({world.chunksX}x{world.chunksY} chunks)");
             Debug.Log("[SandboxController] Cluster controls: 7=Circle, 8=Square, 9=L-Shape, [/]=Size");
             Debug.Log("[SandboxController] Debug overlay: F3=Toggle, F4=Gizmos");

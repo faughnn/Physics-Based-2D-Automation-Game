@@ -52,15 +52,40 @@ namespace FallingSand
             cellTexture.wrapMode = TextureWrapMode.Clamp;
             Debug.Log($"[CellRenderer] Cell texture created: {cellTexture.width}x{cellTexture.height}");
 
+            // Density texture - per-cell density for lighting calculations
+            densityTexture = new Texture2D(
+                world.width,
+                world.height,
+                TextureFormat.RGBA32,
+                mipChain: false,
+                linear: true
+            );
+            densityTexture.filterMode = FilterMode.Point;
+            densityTexture.wrapMode = TextureWrapMode.Clamp;
+            Debug.Log("[CellRenderer] Density texture created");
+
             // Palette texture - 256 colours
             paletteTexture = new Texture2D(256, 1, TextureFormat.RGBA32, false, false);
             paletteTexture.filterMode = FilterMode.Point;
             paletteTexture.wrapMode = TextureWrapMode.Clamp;
             Debug.Log("[CellRenderer] Palette texture created");
 
-            // Allocate upload buffer
+            // Variation texture - per-material colour variation amount (256x1 lookup)
+            variationTexture = new Texture2D(256, 1, TextureFormat.RGBA32, false, true);
+            variationTexture.filterMode = FilterMode.Point;
+            variationTexture.wrapMode = TextureWrapMode.Clamp;
+            Debug.Log("[CellRenderer] Variation texture created");
+
+            // Emission texture - per-material glow intensity (256x1 lookup)
+            emissionTexture = new Texture2D(256, 1, TextureFormat.RGBA32, false, true);
+            emissionTexture.filterMode = FilterMode.Point;
+            emissionTexture.wrapMode = TextureWrapMode.Clamp;
+            Debug.Log("[CellRenderer] Emission texture created");
+
+            // Allocate upload buffers
             textureBuffer = new Color32[world.width * world.height];
-            Debug.Log($"[CellRenderer] Upload buffer allocated: {textureBuffer.Length} pixels");
+            densityBuffer = new Color32[world.width * world.height];
+            Debug.Log($"[CellRenderer] Upload buffers allocated: {textureBuffer.Length} pixels each");
         }
 
         private void CreateMaterial()
@@ -92,6 +117,9 @@ namespace FallingSand
             renderMaterial = new Material(worldShader);
             renderMaterial.SetTexture("_CellTex", cellTexture);
             renderMaterial.SetTexture("_PaletteTex", paletteTexture);
+            renderMaterial.SetTexture("_DensityTex", densityTexture);
+            renderMaterial.SetTexture("_VariationTex", variationTexture);
+            renderMaterial.SetTexture("_EmissionTex", emissionTexture);
             Debug.Log($"[CellRenderer] Material created: {renderMaterial.name}");
         }
 
@@ -148,12 +176,16 @@ namespace FallingSand
 
         private void BuildPalette()
         {
-            Debug.Log("[CellRenderer] Building palette...");
+            Debug.Log("[CellRenderer] Building palette and material textures...");
             Color32[] colours = new Color32[256];
+            Color32[] variations = new Color32[256];
+            Color32[] emissions = new Color32[256];
 
             for (int i = 0; i < world.materials.Length && i < 256; i++)
             {
                 colours[i] = world.materials[i].baseColour;
+                variations[i] = new Color32(world.materials[i].colourVariation, 0, 0, 255);
+                emissions[i] = new Color32(world.materials[i].emission, 0, 0, 255);
             }
 
             // Log first few colors
@@ -161,7 +193,14 @@ namespace FallingSand
 
             paletteTexture.SetPixels32(colours);
             paletteTexture.Apply();
-            Debug.Log("[CellRenderer] Palette built and applied");
+
+            variationTexture.SetPixels32(variations);
+            variationTexture.Apply();
+
+            emissionTexture.SetPixels32(emissions);
+            emissionTexture.Apply();
+
+            Debug.Log("[CellRenderer] Palette, variation, and emission textures built and applied");
         }
 
         private int uploadCount = 0;
@@ -177,10 +216,16 @@ namespace FallingSand
                 if (materialId != Materials.Air) nonAirCount++;
                 // Store materialId in red channel, scaled to be read as 0-1 in shader
                 textureBuffer[i] = new Color32(materialId, 0, 0, 255);
+                // Density: 0 for air, 255 for solid materials (used for lighting normals)
+                byte density = materialId == Materials.Air ? (byte)0 : (byte)255;
+                densityBuffer[i] = new Color32(density, 0, 0, 255);
             }
 
             cellTexture.SetPixels32(textureBuffer);
             cellTexture.Apply(updateMipmaps: false);
+
+            densityTexture.SetPixels32(densityBuffer);
+            densityTexture.Apply(updateMipmaps: false);
 
             uploadCount++;
             if (uploadCount <= 3 || uploadCount % 60 == 0)
@@ -192,17 +237,17 @@ namespace FallingSand
         private void OnDestroy()
         {
             if (cellTexture != null)
-            {
                 Destroy(cellTexture);
-            }
             if (paletteTexture != null)
-            {
                 Destroy(paletteTexture);
-            }
+            if (densityTexture != null)
+                Destroy(densityTexture);
+            if (variationTexture != null)
+                Destroy(variationTexture);
+            if (emissionTexture != null)
+                Destroy(emissionTexture);
             if (renderMaterial != null)
-            {
                 Destroy(renderMaterial);
-            }
         }
     }
 }

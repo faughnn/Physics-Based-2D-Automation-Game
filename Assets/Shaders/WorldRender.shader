@@ -149,15 +149,25 @@ Shader "FallingSand/WorldRender"
                 // === LIGHTING EFFECT ===
                 if (_LightingEnabled > 0.5)
                 {
-                    // Compute normal from density gradient
+                    // Compute gradient from density differences
                     float densL = GetDensity(uv + float2(-texel.x, 0));
                     float densR = GetDensity(uv + float2(texel.x, 0));
                     float densU = GetDensity(uv + float2(0, texel.y));
                     float densD = GetDensity(uv + float2(0, -texel.y));
 
-                    float3 normal = normalize(float3(densL - densR, densD - densU, 0.5));
-                    float lighting = saturate(dot(normal, _LightDir));
-                    colour.rgb *= 0.7 + lighting * 0.4;
+                    float gradX = densL - densR;
+                    float gradY = densD - densU;
+                    float gradMagnitude = abs(gradX) + abs(gradY);
+
+                    // Only apply lighting at edges (where there's a gradient)
+                    if (gradMagnitude > 0.01)
+                    {
+                        float3 normal = normalize(float3(gradX, gradY, 0.2));
+                        float lighting = saturate(dot(normal, _LightDir));
+
+                        // Dramatic edge lighting: 0.4 (shadow) to 1.3 (bright highlight)
+                        colour.rgb *= 0.4 + lighting * 0.9;
+                    }
                 }
 
                 // === GLOW EFFECT ===

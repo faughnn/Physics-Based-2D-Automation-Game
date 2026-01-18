@@ -47,7 +47,26 @@ namespace FallingSand.Graphics
                 postProcessVolume = FindFirstObjectByType<Volume>();
             }
 
-            if (postProcessVolume != null && postProcessVolume.profile != null)
+            // Create a global volume if none exists
+            if (postProcessVolume == null)
+            {
+                GameObject volumeObj = new GameObject("PostProcessVolume");
+                postProcessVolume = volumeObj.AddComponent<Volume>();
+                postProcessVolume.isGlobal = true;
+
+                // Create a new profile with bloom
+                var profile = ScriptableObject.CreateInstance<VolumeProfile>();
+                bloomComponent = profile.Add<Bloom>(overrides: true);
+                bloomComponent.threshold.value = 0.8f;
+                bloomComponent.intensity.value = 0f;  // Start disabled, GlowEffect controls this
+                bloomComponent.scatter.value = 0.7f;
+
+                postProcessVolume.profile = profile;
+                Debug.Log("[GraphicsManager] Created post-process volume with bloom");
+                return;
+            }
+
+            if (postProcessVolume.profile != null)
             {
                 postProcessVolume.profile.TryGet(out bloomComponent);
                 if (bloomComponent != null)
@@ -57,7 +76,7 @@ namespace FallingSand.Graphics
             }
             else
             {
-                Debug.LogWarning("[GraphicsManager] No post-processing volume found");
+                Debug.LogWarning("[GraphicsManager] Post-processing volume has no profile");
             }
         }
 

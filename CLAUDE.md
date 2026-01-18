@@ -2,6 +2,8 @@
 
 **Always use the Opus model for any subagents that are launched.**
 
+**Never commit to git without asking the user first.** Always confirm before running `git commit`, `git push`, or other commands that modify git history.
+
 ---
 
 # Development Guidelines
@@ -45,3 +47,16 @@ All debug visualization and metrics display goes through the unified `DebugOverl
 **Controls:**
 - F3: Toggle overlay visibility
 - F4: Toggle gizmos visibility
+
+---
+
+## Bug Tracking
+
+When requested to log a bug, create a markdown file in `G:\Sandy\DevPlans\Bugs\`.
+
+**Naming convention:** `{STATUS}-{BugName}.md`
+- `OPEN-BugName.md` - Active bug, not yet fixed
+- `FIXED-BugName.md` - Bug has been resolved
+- `REJECTED-BugName.md` - Not a bug, or won't fix
+
+Rename the file when status changes.
