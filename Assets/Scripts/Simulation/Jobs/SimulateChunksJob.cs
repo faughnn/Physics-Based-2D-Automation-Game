@@ -37,11 +37,12 @@ namespace FallingSand
         // Frame counter for double-processing prevention
         public ushort currentFrame;
 
-        // Gravity divisor: 1=full speed, 2=half gravity rate, etc.
-        public int gravityDivisor;
+        // Gravity interval: apply gravity when frame % interval == 0
+        // Higher interval = slower effective gravity (1/interval cells/frame²)
+        public int gravityInterval;
 
         // Physics constants from PhysicsSettings (passed in because Burst can't access static fields)
-        public int gravity;      // Gravity acceleration in cells/frame² (usually 1)
+        public int gravity;      // Gravity applied on gravity frames (usually 1)
         public int maxVelocity;  // Maximum velocity in cells/frame (usually 16)
 
         // Buffer size around each chunk
@@ -129,8 +130,8 @@ namespace FallingSand
 
         private void SimulatePowder(int x, int y, Cell cell, MaterialDef mat)
         {
-            // Apply gravity (only on certain frames for slow-motion effect)
-            if (currentFrame % gravityDivisor == 0)
+            // Apply gravity only on gravity frames (every gravityInterval frames)
+            if (currentFrame % gravityInterval == 0)
             {
                 cell.velocityY = (sbyte)math.min(cell.velocityY + gravity, maxVelocity);
             }
@@ -184,8 +185,8 @@ namespace FallingSand
             // Track if we were free-falling before this frame
             bool wasFreeFalling = cell.velocityY > 2;
 
-            // Apply gravity (only on certain frames for slow-motion effect)
-            if (currentFrame % gravityDivisor == 0)
+            // Apply gravity only on gravity frames (every gravityInterval frames)
+            if (currentFrame % gravityInterval == 0)
             {
                 cell.velocityY = (sbyte)math.min(cell.velocityY + gravity, maxVelocity);
             }
@@ -290,8 +291,8 @@ namespace FallingSand
 
         private void SimulateGas(int x, int y, Cell cell, MaterialDef mat)
         {
-            // Gases rise - negative gravity (only on certain frames for slow-motion effect)
-            if (currentFrame % gravityDivisor == 0)
+            // Gases rise - negative gravity (only on gravity frames)
+            if (currentFrame % gravityInterval == 0)
             {
                 cell.velocityY = (sbyte)math.max(cell.velocityY - gravity, -maxVelocity);
             }

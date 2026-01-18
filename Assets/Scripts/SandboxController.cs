@@ -16,8 +16,6 @@ namespace FallingSand
         [SerializeField] private int brushSize = 5;
         [SerializeField] private byte currentMaterial = Materials.Sand;
 
-        // Simulation speed is now in PhysicsSettings (shared with cluster physics)
-
         [Header("References")]
         [SerializeField] private Shader worldShader;
 
@@ -41,7 +39,6 @@ namespace FallingSand
         public CellSimulatorJobbed Simulator => simulator;
         public byte CurrentMaterial => currentMaterial;
         public string CurrentMaterialName => currentMaterial < materialNames.Length ? materialNames[currentMaterial] : $"Material {currentMaterial}";
-        public int SimulationSpeed => PhysicsSettings.SimulationSpeed;
 
         private void Start()
         {
@@ -141,9 +138,9 @@ namespace FallingSand
             HandleMaterialSelection();
 
             // Simulate physics (multithreaded) every frame
-            // SimulationSpeed controls gravity rate (1=full speed, higher=slower acceleration)
+            // Gravity is applied at fixed interval (PhysicsSettings.GravityInterval)
             // clusterManager handles rigid body physics before cell simulation
-            simulator.Simulate(world, PhysicsSettings.SimulationSpeed, clusterManager);
+            simulator.Simulate(world, clusterManager);
 
             // Upload texture changes
             cellRenderer.UploadFullTexture();
@@ -191,14 +188,6 @@ namespace FallingSand
             if (keyboard.digit4Key.wasPressedThisFrame) currentMaterial = Materials.Water;
             if (keyboard.digit5Key.wasPressedThisFrame) currentMaterial = Materials.Oil;
             if (keyboard.digit6Key.wasPressedThisFrame) currentMaterial = Materials.Steam;
-
-            // Numpad +/- to adjust simulation speed (shared with cluster physics)
-            if (keyboard.numpadPlusKey.wasPressedThisFrame)
-                PhysicsSettings.SimulationSpeed = Mathf.Clamp(PhysicsSettings.SimulationSpeed - 1,
-                    PhysicsSettings.MinSimulationSpeed, PhysicsSettings.MaxSimulationSpeed);  // Faster
-            if (keyboard.numpadMinusKey.wasPressedThisFrame)
-                PhysicsSettings.SimulationSpeed = Mathf.Clamp(PhysicsSettings.SimulationSpeed + 1,
-                    PhysicsSettings.MinSimulationSpeed, PhysicsSettings.MaxSimulationSpeed);  // Slower
         }
 
         private int paintLogCount = 0;

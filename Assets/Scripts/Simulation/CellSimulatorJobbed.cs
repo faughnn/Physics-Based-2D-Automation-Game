@@ -37,9 +37,8 @@ namespace FallingSand
         /// Simulate one frame of physics using parallel jobs.
         /// </summary>
         /// <param name="world">The cell world to simulate</param>
-        /// <param name="gravityDivisor">Controls gravity rate: 1=full speed, 2=half speed, etc.</param>
         /// <param name="clusterManager">Optional cluster manager for rigid body physics</param>
-        public void Simulate(CellWorld world, int gravityDivisor = 1, ClusterManager clusterManager = null)
+        public void Simulate(CellWorld world, ClusterManager clusterManager = null)
         {
             stopwatch.Restart();
 
@@ -65,13 +64,13 @@ namespace FallingSand
             JobHandle handle = default;
 
             if (groupA.Length > 0)
-                handle = ScheduleGroup(world, groupA, gravityDivisor, handle);
+                handle = ScheduleGroup(world, groupA, handle);
             if (groupB.Length > 0)
-                handle = ScheduleGroup(world, groupB, gravityDivisor, handle);
+                handle = ScheduleGroup(world, groupB, handle);
             if (groupC.Length > 0)
-                handle = ScheduleGroup(world, groupC, gravityDivisor, handle);
+                handle = ScheduleGroup(world, groupC, handle);
             if (groupD.Length > 0)
-                handle = ScheduleGroup(world, groupD, gravityDivisor, handle);
+                handle = ScheduleGroup(world, groupD, handle);
 
             // Complete all jobs
             handle.Complete();
@@ -83,7 +82,7 @@ namespace FallingSand
             LastSimulationTimeMs = (float)stopwatch.Elapsed.TotalMilliseconds;
         }
 
-        private JobHandle ScheduleGroup(CellWorld world, NativeList<int> chunkIndices, int gravityDivisor, JobHandle dependency)
+        private JobHandle ScheduleGroup(CellWorld world, NativeList<int> chunkIndices, JobHandle dependency)
         {
             var job = new SimulateChunksJob
             {
@@ -96,8 +95,8 @@ namespace FallingSand
                 chunksX = world.chunksX,
                 chunksY = world.chunksY,
                 currentFrame = world.currentFrame,
-                gravityDivisor = gravityDivisor,
-                gravity = (int)PhysicsSettings.Gravity,
+                gravityInterval = PhysicsSettings.GravityInterval,
+                gravity = PhysicsSettings.CellGravityAccel,
                 maxVelocity = PhysicsSettings.MaxVelocity,
             };
 

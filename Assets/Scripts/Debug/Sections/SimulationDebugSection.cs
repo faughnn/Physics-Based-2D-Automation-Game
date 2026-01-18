@@ -5,7 +5,7 @@ namespace FallingSand.Debugging
 {
     /// <summary>
     /// Debug section for simulation performance metrics.
-    /// Shows FPS, Sim Time, Worker Threads, Sim Speed.
+    /// Shows FPS, Sim Time, Worker Threads.
     /// </summary>
     public class SimulationDebugSection : DebugSectionBase
     {
@@ -38,7 +38,7 @@ namespace FallingSand.Debugging
         public override int DrawGUI(GUIStyle labelStyle, float x, float y, float lineHeight)
         {
             // If style is null, just return line count for layout calculation
-            if (labelStyle == null) return 4;
+            if (labelStyle == null) return 3;
 
             // Smooth delta time each frame for accurate FPS
             deltaTime += (Time.unscaledDeltaTime - deltaTime) * 0.1f;
@@ -58,12 +58,6 @@ namespace FallingSand.Debugging
 
             // Worker Threads
             DrawLabel($"Worker Threads: {workerThreadCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.cyan);
-            lines++;
-
-            // Simulation Speed
-            int speed = sandbox != null ? sandbox.SimulationSpeed : 1;
-            Color speedColor = speed == 1 ? Color.white : Color.yellow;
-            DrawLabel($"Sim Speed: {speed}/{PhysicsSettings.MaxSimulationSpeed}", x, y + lines * lineHeight, width, lineHeight, labelStyle, speedColor);
             lines++;
 
             return lines;

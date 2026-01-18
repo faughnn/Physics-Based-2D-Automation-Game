@@ -7,46 +7,56 @@ namespace FallingSand
     public static class PhysicsSettings
     {
         /// <summary>
-        /// Gravity acceleration in cells per frame².
-        /// Positive value = downward (increasing cell Y).
+        /// Gravity interval - how many frames between gravity applications for cells.
+        /// This gives effective gravity of 1/15 cells/frame², matching tested behavior.
         /// </summary>
-        public const float Gravity = 1f;
+        public const int GravityInterval = 15;
+
+        /// <summary>
+        /// Integer gravity applied on gravity frames (for cell integer math).
+        /// Actual effect: CellGravityAccel / GravityInterval = 1/15 cells/frame²
+        /// </summary>
+        public const int CellGravityAccel = 1;
 
         /// <summary>
         /// Maximum fall velocity in cells per frame.
         /// </summary>
         public const int MaxVelocity = 16;
 
+        // Sleep thresholds for cluster physics
         /// <summary>
-        /// Simulation speed divisor (1 = full speed, higher = slower).
-        /// Controls how often gravity is applied for cells, and scales physics timestep for clusters.
-        /// Runtime adjustable via numpad +/-.
+        /// Linear velocity below which bodies can start sleeping (world units/sec).
         /// </summary>
-        public static int SimulationSpeed { get; set; } = 15;
+        public const float LinearSleepTolerance = 0.5f;
 
         /// <summary>
-        /// Minimum simulation speed (fastest).
+        /// Angular velocity below which bodies can start sleeping (degrees/sec).
         /// </summary>
-        public const int MinSimulationSpeed = 1;
+        public const float AngularSleepTolerance = 2f;
 
         /// <summary>
-        /// Maximum simulation speed divisor (slowest).
+        /// Time a body must be below thresholds before sleeping (seconds).
         /// </summary>
-        public const int MaxSimulationSpeed = 20;
+        public const float TimeToSleep = 0.5f;
 
         /// <summary>
-        /// Convert cell gravity to Unity Physics2D gravity.
+        /// Get Unity Physics2D gravity that matches cell simulation gravity.
         /// Unity uses world units per second², Y+ = up.
         /// Cell system uses cells per frame², Y+ = down.
         /// </summary>
-        public static float GetUnityGravity(float cellGravity, float cellToWorldScale = 2f, float targetFps = 60f)
+        /// <param name="cellToWorldScale">World units per cell (default 2)</param>
+        /// <param name="targetFps">Target frame rate (default 60)</param>
+        /// <returns>Gravity in world units/sec² (negative = down)</returns>
+        public static float GetUnityGravity(float cellToWorldScale = 2f, float targetFps = 60f)
         {
-            // cellGravity is in cells/frame²
+            // Effective gravity = CellGravityAccel / GravityInterval = 1/15 cells/frame²
+            float effectiveCellGravity = (float)CellGravityAccel / GravityInterval;
             // Convert to world units/sec²:
             // - Multiply by cellToWorldScale to get world units
             // - Multiply by fps² to convert from per-frame to per-second
             // - Negate because Unity Y+ is up, cell Y+ is down
-            return -cellGravity * cellToWorldScale * targetFps * targetFps;
+            return -effectiveCellGravity * cellToWorldScale * targetFps * targetFps;
+            // Result: -(1/15) * 2 * 60 * 60 = -480 units/sec²
         }
     }
 }

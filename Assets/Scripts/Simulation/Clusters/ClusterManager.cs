@@ -38,6 +38,12 @@ namespace FallingSand
         public int DisplacementsThisFrame { get; private set; }
         public float PhysicsTimeMs { get; private set; }
         public float SyncTimeMs { get; private set; }
+        public int SleepingCount { get; private set; }
+        public int SkippedSyncCount { get; private set; }
+
+        // Position tolerance for considering a sleeping cluster as "same position"
+        private const float PositionTolerance = 0.01f;
+        private const float RotationTolerance = 0.1f;  // degrees
 
         // Reference to world (set by SandboxController)
         private CellWorld world;
@@ -51,8 +57,13 @@ namespace FallingSand
 
             // Set Physics2D gravity to match cell simulation gravity
             // Uses shared PhysicsSettings as single source of truth
-            float unityGravity = PhysicsSettings.GetUnityGravity(PhysicsSettings.Gravity);
+            float unityGravity = PhysicsSettings.GetUnityGravity();
             Physics2D.gravity = new Vector2(0, unityGravity);
+
+            // Configure sleep thresholds to reduce jitter when clusters come to rest
+            Physics2D.linearSleepTolerance = PhysicsSettings.LinearSleepTolerance;
+            Physics2D.angularSleepTolerance = PhysicsSettings.AngularSleepTolerance;
+            Physics2D.timeToSleep = PhysicsSettings.TimeToSleep;
         }
 
         /// <summary>
@@ -61,6 +72,30 @@ namespace FallingSand
         public void Initialize(CellWorld cellWorld)
         {
             world = cellWorld;
+        }
+
+        /// <summary>
+        /// Check if a cluster can skip sync because it's sleeping at the same position.
+        /// </summary>
+        private bool ShouldSkipSync(ClusterData cluster)
+        {
+            if (cluster.rb == null) return false;
+
+            // Must be sleeping
+            if (!cluster.rb.IsSleeping()) return false;
+
+            // Must have already synced pixels at this position
+            if (!cluster.isPixelsSynced) return false;
+
+            // Check position hasn't changed significantly
+            Vector2 posDelta = cluster.Position - cluster.lastSyncedPosition;
+            if (posDelta.sqrMagnitude > PositionTolerance * PositionTolerance) return false;
+
+            // Check rotation hasn't changed significantly
+            float rotDelta = Mathf.Abs(cluster.rb.rotation - cluster.lastSyncedRotation);
+            if (rotDelta > RotationTolerance) return false;
+
+            return true;
         }
 
         /// <summary>
@@ -144,6 +179,15 @@ namespace FallingSand
             if (world == null) return;
 
             DisplacementsThisFrame = 0;
+            SkippedSyncCount = 0;
+            SleepingCount = 0;
+
+            // Count sleeping clusters
+            foreach (var cluster in clusters.Values)
+            {
+                if (cluster.rb != null && cluster.rb.IsSleeping())
+                    SleepingCount++;
+            }
 
             // STEP 1: Clear old cluster pixels from grid
             var clearWatch = System.Diagnostics.Stopwatch.StartNew();
@@ -151,14 +195,40 @@ namespace FallingSand
             clearWatch.Stop();
 
             // STEP 2: Step Unity physics
-            // Scale timestep by simulation speed to match cell gravity behavior
-            // Higher SimulationSpeed = slower physics (smaller timestep)
-            float scaledDeltaTime = deltaTime / PhysicsSettings.SimulationSpeed;
-
+            // Gravity is now baked with 1/15 factor, so use deltaTime directly
             var physicsWatch = System.Diagnostics.Stopwatch.StartNew();
-            Physics2D.Simulate(scaledDeltaTime);
+            Physics2D.Simulate(deltaTime);
             physicsWatch.Stop();
             PhysicsTimeMs = (float)physicsWatch.Elapsed.TotalMilliseconds;
+
+            // Manual sleep forcing - physics solver maintains equilibrium velocity (~1.6) due to
+            // constant penetration resolution, so Unity's sleep system never triggers.
+            // We track consecutive low-velocity frames and force sleep after threshold.
+            foreach (var cluster in clusters.Values)
+            {
+                if (cluster.rb != null && !cluster.rb.IsSleeping())
+                {
+                    float linVel = cluster.rb.linearVelocity.magnitude;
+                    int contactCount = cluster.rb.GetContacts(new ContactPoint2D[4]);
+
+                    if (linVel < 3f && contactCount > 0)
+                    {
+                        cluster.lowVelocityFrames++;
+
+                        if (cluster.lowVelocityFrames > 30)  // ~0.5 seconds at 60fps
+                        {
+                            cluster.rb.linearVelocity = Vector2.zero;
+                            cluster.rb.angularVelocity = 0f;
+                            cluster.rb.Sleep();
+                            cluster.lowVelocityFrames = 0;
+                        }
+                    }
+                    else
+                    {
+                        cluster.lowVelocityFrames = 0;
+                    }
+                }
+            }
 
             // STEP 3: Sync cluster pixels to grid at new positions
             var syncWatch = System.Diagnostics.Stopwatch.StartNew();
@@ -175,6 +245,12 @@ namespace FallingSand
         {
             foreach (var cluster in clusters.Values)
             {
+                // Skip clearing if cluster is sleeping at the same position
+                if (ShouldSkipSync(cluster))
+                    continue;
+
+                // Mark as not synced since we're clearing
+                cluster.isPixelsSynced = false;
                 ClearClusterPixels(cluster);
             }
         }
@@ -214,7 +290,19 @@ namespace FallingSand
         {
             foreach (var cluster in clusters.Values)
             {
+                // Skip syncing if cluster is sleeping at the same position
+                if (ShouldSkipSync(cluster))
+                {
+                    SkippedSyncCount++;
+                    continue;
+                }
+
                 SyncClusterToWorld(cluster);
+
+                // Record sync state for sleep optimization
+                cluster.isPixelsSynced = true;
+                cluster.lastSyncedPosition = cluster.Position;
+                cluster.lastSyncedRotation = cluster.rb != null ? cluster.rb.rotation : 0f;
             }
         }
 

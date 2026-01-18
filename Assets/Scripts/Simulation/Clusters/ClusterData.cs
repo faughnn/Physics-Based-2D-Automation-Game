@@ -19,6 +19,14 @@ namespace FallingSand
         public Rigidbody2D rb;
         public PolygonCollider2D polyCollider;
 
+        // Sync state tracking for sleep optimization
+        [HideInInspector] public bool isPixelsSynced;
+        [HideInInspector] public Vector2 lastSyncedPosition;
+        [HideInInspector] public float lastSyncedRotation;
+
+        // Manual sleep tracking (physics solver maintains equilibrium velocity, so we force sleep)
+        [HideInInspector] public int lowVelocityFrames;
+
         /// <summary>
         /// World position from Rigidbody2D.
         /// </summary>
