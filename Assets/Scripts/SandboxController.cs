@@ -1,3 +1,4 @@
+using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using FallingSand.Debugging;
@@ -25,11 +26,18 @@ namespace FallingSand
         private ClusterManager clusterManager;
         private ClusterTestSpawner clusterTestSpawner;
         private TerrainColliderManager terrainColliders;
+        private BeltManager beltManager;
         private DebugOverlay debugOverlay;
         private Camera mainCamera;
 
         // Material names for display
         private readonly string[] materialNames = { "Air", "Stone", "Sand", "Water", "Oil", "Steam" };
+
+        // Belt placement mode
+        private bool beltMode = false;
+        private sbyte beltDirection = 1;  // +1 = right, -1 = left
+        private bool beltDragging = false;
+        private int beltDragY = -1;  // Snapped Y position locked during drag
 
         // Input references
         private Mouse mouse;
@@ -39,6 +47,9 @@ namespace FallingSand
         public CellSimulatorJobbed Simulator => simulator;
         public byte CurrentMaterial => currentMaterial;
         public string CurrentMaterialName => currentMaterial < materialNames.Length ? materialNames[currentMaterial] : $"Material {currentMaterial}";
+        public bool BeltMode => beltMode;
+        public sbyte BeltDirection => beltDirection;
+        public BeltManager BeltManager => beltManager;
 
         private void Start()
         {
@@ -74,6 +85,10 @@ namespace FallingSand
             terrainColliders = clusterManagerObj.AddComponent<TerrainColliderManager>();
             terrainColliders.Initialize(world);
             Debug.Log("[SandboxController] TerrainColliderManager created");
+
+            // Create belt manager
+            beltManager = new BeltManager(world);
+            Debug.Log("[SandboxController] BeltManager created");
 
             // Create renderer
             Debug.Log("[SandboxController] Creating CellRenderer...");
@@ -112,6 +127,7 @@ namespace FallingSand
 
             Debug.Log($"[SandboxController] === READY === World: {worldWidth}x{worldHeight} cells ({world.chunksX}x{world.chunksY} chunks)");
             Debug.Log("[SandboxController] Cluster controls: 7=Circle, 8=Square, 9=L-Shape, [/]=Size");
+            Debug.Log("[SandboxController] Belt controls: B=Toggle belt mode, Q/E=Rotate direction");
             Debug.Log("[SandboxController] Debug overlay: F3=Toggle, F4=Gizmos");
         }
 
@@ -150,7 +166,16 @@ namespace FallingSand
             // Simulate physics (multithreaded) every frame
             // Gravity is applied at fixed interval (PhysicsSettings.GravityInterval)
             // clusterManager handles rigid body physics before cell simulation
-            simulator.Simulate(world, clusterManager);
+            // beltManager applies horizontal force to clusters resting on belts
+            simulator.Simulate(world, clusterManager, beltManager);
+
+            // Simulate belt movement (Burst-compiled parallel job)
+            JobHandle beltHandle = beltManager.ScheduleSimulateBelts(
+                world.cells, world.chunks, world.materials,
+                world.width, world.height,
+                world.chunksX, world.chunksY,
+                world.currentFrame);
+            beltHandle.Complete();
 
             // Upload texture changes
             cellRenderer.UploadFullTexture();
@@ -168,22 +193,54 @@ namespace FallingSand
         {
             if (mouse == null) return;
 
-            // Paint with left mouse button
-            if (mouse.leftButton.isPressed)
+            if (beltMode)
             {
-                PaintAtMouse(currentMaterial);
+                // Belt placement mode with horizontal line snapping
+                if (mouse.leftButton.wasPressedThisFrame)
+                {
+                    // Start of drag - lock the Y position
+                    Vector2Int cell = GetCellAtMouse();
+                    beltDragY = BeltManager.SnapToGrid(cell.y);
+                    beltDragging = true;
+                    PlaceBeltAtMouse();
+                }
+                else if (mouse.leftButton.isPressed && beltDragging)
+                {
+                    // Continue drag - use locked Y
+                    PlaceBeltAtMouse();
+                }
+                else if (mouse.leftButton.wasReleasedThisFrame)
+                {
+                    // End of drag
+                    beltDragging = false;
+                    beltDragY = -1;
+                }
+                else if (mouse.rightButton.isPressed)
+                {
+                    RemoveBeltAtMouse();
+                }
             }
-            // Erase with right mouse button
-            else if (mouse.rightButton.isPressed)
+            else
             {
-                PaintAtMouse(Materials.Air);
+                // Normal paint mode
+                if (mouse.leftButton.isPressed)
+                {
+                    PaintAtMouse(currentMaterial);
+                }
+                else if (mouse.rightButton.isPressed)
+                {
+                    PaintAtMouse(Materials.Air);
+                }
             }
 
-            // Adjust brush size with scroll wheel
-            float scroll = mouse.scroll.ReadValue().y;
-            if (scroll != 0)
+            // Adjust brush size with scroll wheel (only in paint mode)
+            if (!beltMode)
             {
-                brushSize = Mathf.Clamp(brushSize + (scroll > 0 ? 1 : -1), 1, 50);
+                float scroll = mouse.scroll.ReadValue().y;
+                if (scroll != 0)
+                {
+                    brushSize = Mathf.Clamp(brushSize + (scroll > 0 ? 1 : -1), 1, 50);
+                }
             }
         }
 
@@ -191,13 +248,35 @@ namespace FallingSand
         {
             if (keyboard == null) return;
 
-            // Number keys to select materials
-            if (keyboard.digit1Key.wasPressedThisFrame) currentMaterial = Materials.Air;
-            if (keyboard.digit2Key.wasPressedThisFrame) currentMaterial = Materials.Stone;
-            if (keyboard.digit3Key.wasPressedThisFrame) currentMaterial = Materials.Sand;
-            if (keyboard.digit4Key.wasPressedThisFrame) currentMaterial = Materials.Water;
-            if (keyboard.digit5Key.wasPressedThisFrame) currentMaterial = Materials.Oil;
-            if (keyboard.digit6Key.wasPressedThisFrame) currentMaterial = Materials.Steam;
+            // B key toggles belt mode
+            if (keyboard.bKey.wasPressedThisFrame)
+            {
+                beltMode = !beltMode;
+                Debug.Log($"[SandboxController] Belt mode: {(beltMode ? "ON" : "OFF")} (direction: {(beltDirection > 0 ? "RIGHT" : "LEFT")})");
+            }
+
+            // Q/E to rotate belt direction
+            if (keyboard.qKey.wasPressedThisFrame)
+            {
+                beltDirection = -1;
+                Debug.Log("[SandboxController] Belt direction: LEFT");
+            }
+            if (keyboard.eKey.wasPressedThisFrame)
+            {
+                beltDirection = 1;
+                Debug.Log("[SandboxController] Belt direction: RIGHT");
+            }
+
+            // Number keys to select materials (only when not in belt mode)
+            if (!beltMode)
+            {
+                if (keyboard.digit1Key.wasPressedThisFrame) currentMaterial = Materials.Air;
+                if (keyboard.digit2Key.wasPressedThisFrame) currentMaterial = Materials.Stone;
+                if (keyboard.digit3Key.wasPressedThisFrame) currentMaterial = Materials.Sand;
+                if (keyboard.digit4Key.wasPressedThisFrame) currentMaterial = Materials.Water;
+                if (keyboard.digit5Key.wasPressedThisFrame) currentMaterial = Materials.Oil;
+                if (keyboard.digit6Key.wasPressedThisFrame) currentMaterial = Materials.Steam;
+            }
         }
 
         private int paintLogCount = 0;
@@ -257,8 +336,66 @@ namespace FallingSand
             }
         }
 
+        private Vector2Int GetCellAtMouse()
+        {
+            Vector2 mousePos = mouse.position.ReadValue();
+            Vector3 mouseWorldPos = mainCamera.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0));
+
+            int cellX = Mathf.FloorToInt((mouseWorldPos.x + worldWidth) / 2f);
+            int cellY = Mathf.FloorToInt((worldHeight - mouseWorldPos.y) / 2f);
+
+            return new Vector2Int(cellX, cellY);
+        }
+
+        private void PlaceBeltAtMouse()
+        {
+            Vector2Int cell = GetCellAtMouse();
+            // Use locked Y during drag for horizontal line placement
+            int y = beltDragging && beltDragY >= 0 ? beltDragY : cell.y;
+
+            // Get snapped position for marking chunks dirty
+            int gridX = BeltManager.SnapToGrid(cell.x);
+            int gridY = BeltManager.SnapToGrid(y);
+
+            // BeltManager handles grid snapping internally
+            if (beltManager.PlaceBelt(cell.x, y, beltDirection))
+            {
+                // Mark chunks dirty for terrain collider regeneration (belts are static)
+                MarkBeltChunksDirty(gridX, gridY);
+            }
+        }
+
+        private void RemoveBeltAtMouse()
+        {
+            Vector2Int cell = GetCellAtMouse();
+
+            // Get snapped position for marking chunks dirty
+            int gridX = BeltManager.SnapToGrid(cell.x);
+            int gridY = BeltManager.SnapToGrid(cell.y);
+
+            // BeltManager handles grid snapping internally
+            if (beltManager.RemoveBelt(cell.x, cell.y))
+            {
+                // Mark chunks dirty for terrain collider regeneration
+                MarkBeltChunksDirty(gridX, gridY);
+            }
+        }
+
+        private void MarkBeltChunksDirty(int gridX, int gridY)
+        {
+            // Mark all chunks covered by the 8x8 belt block
+            for (int dy = 0; dy < 8; dy++)
+            {
+                for (int dx = 0; dx < 8; dx++)
+                {
+                    terrainColliders.MarkChunkDirtyAt(gridX + dx, gridY + dy);
+                }
+            }
+        }
+
         private void OnDestroy()
         {
+            beltManager?.Dispose();
             simulator?.Dispose();
             world?.Dispose();
         }

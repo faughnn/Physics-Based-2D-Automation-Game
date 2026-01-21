@@ -73,6 +73,16 @@ namespace FallingSand
             data.rb = rb;
             data.polyCollider = go.GetComponent<PolygonCollider2D>();
 
+            // 5b. Calculate bounding radius (max distance from center to any pixel corner)
+            float maxRadius = 0f;
+            foreach (var p in pixels)
+            {
+                // +1 because pixel extends from localX to localX+1
+                float r = Mathf.Max(Mathf.Abs(p.localX) + 1, Mathf.Abs(p.localY) + 1);
+                if (r > maxRadius) maxRadius = r;
+            }
+            data.localRadius = maxRadius;
+
             // 6. Calculate physics properties from pixels
             CalculatePhysicsProperties(data, manager.defaultDensity);
 

@@ -14,6 +14,7 @@ namespace FallingSand
 
         [Header("Pixel Data")]
         public List<ClusterPixel> pixels;     // Pixels relative to center of mass
+        public float localRadius;             // Max distance from center to any pixel corner (for broad-phase checks)
 
         [Header("Cached References")]
         public Rigidbody2D rb;
@@ -26,6 +27,9 @@ namespace FallingSand
 
         // Manual sleep tracking (physics solver maintains equilibrium velocity, so we force sleep)
         [HideInInspector] public int lowVelocityFrames;
+
+        // Belt interaction - set by BeltManager before physics, used by ClusterManager after physics
+        [HideInInspector] public bool isOnBelt;
 
         /// <summary>
         /// World position from Rigidbody2D.

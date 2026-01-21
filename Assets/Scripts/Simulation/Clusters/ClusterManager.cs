@@ -217,6 +217,14 @@ namespace FallingSand
 
                         if (cluster.lowVelocityFrames > 30)  // ~0.5 seconds at 60fps
                         {
+                            // Don't sleep if cluster is on a belt - belts need to keep moving it
+                            // Use cached isOnBelt flag (set by BeltManager BEFORE physics step)
+                            if (cluster.isOnBelt)
+                            {
+                                cluster.lowVelocityFrames = 0;
+                                continue;
+                            }
+
                             cluster.rb.linearVelocity = Vector2.zero;
                             cluster.rb.angularVelocity = 0f;
                             cluster.rb.Sleep();

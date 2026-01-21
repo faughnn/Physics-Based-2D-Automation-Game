@@ -1,12 +1,29 @@
 ---
 name: bug-report
 description: Log a bug report. Use when user asks to create, log, file, or report a bug.
-allowed-tools: Write, Read, Glob
+allowed-tools: Write, Read, Glob, Task
 ---
 
 # Bug Report Skill
 
 Create bug reports in `DevPlans/Bugs/` following the project's bug tracking conventions.
+
+## Investigation First
+
+**Before writing the bug report**, launch an Explore subagent using the Task tool to investigate the bug thoroughly:
+
+```
+Task tool with subagent_type: "Explore"
+model: "opus"
+prompt: "Investigate [bug description]. Find:
+- All code paths that could cause this behavior
+- Related systems and their interactions
+- Any existing comments or TODOs about this issue
+- Similar patterns elsewhere that work correctly
+- Potential root causes based on code analysis"
+```
+
+Use the investigation results to fill in the Root Cause, Affected Code, and Potential Solutions sections with concrete findings rather than speculation.
 
 ## File Naming
 

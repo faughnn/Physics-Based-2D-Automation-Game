@@ -38,11 +38,19 @@ namespace FallingSand
         /// </summary>
         /// <param name="world">The cell world to simulate</param>
         /// <param name="clusterManager">Optional cluster manager for rigid body physics</param>
-        public void Simulate(CellWorld world, ClusterManager clusterManager = null)
+        /// <param name="beltManager">Optional belt manager for belt-cluster interaction</param>
+        public void Simulate(CellWorld world, ClusterManager clusterManager = null, BeltManager beltManager = null)
         {
             stopwatch.Restart();
 
             world.currentFrame++;
+
+            // ========== BELT FORCES (apply before physics step) ==========
+            // Apply horizontal force to clusters resting on belts
+            if (beltManager != null && clusterManager != null)
+            {
+                beltManager.ApplyForcesToClusters(clusterManager, world.width, world.height);
+            }
 
             // ========== CLUSTER PHYSICS (runs before cell simulation) ==========
             // Step 1: Clear old cluster pixels from grid

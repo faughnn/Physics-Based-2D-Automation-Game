@@ -59,8 +59,25 @@ namespace FallingSand
         public const byte Coal = 9;
         public const byte Ash = 10;
         public const byte Smoke = 11;
+        public const byte Belt = 12;       // Belt structure tile (base, unused directly)
+        public const byte BeltLeft = 13;   // Belt moving left (dark stripe)
+        public const byte BeltRight = 14;  // Belt moving right (dark stripe)
+        public const byte BeltLeftLight = 15;   // Belt moving left (light stripe)
+        public const byte BeltRightLight = 16;  // Belt moving right (light stripe)
 
         public const int Count = 256;  // Maximum materials
+
+        /// <summary>
+        /// Checks if a material ID represents any type of belt.
+        /// </summary>
+        public static bool IsBelt(byte materialId)
+        {
+            return materialId == Belt ||
+                   materialId == BeltLeft ||
+                   materialId == BeltRight ||
+                   materialId == BeltLeftLight ||
+                   materialId == BeltRightLight;
+        }
 
         public static MaterialDef[] CreateDefaults()
         {
@@ -138,6 +155,61 @@ namespace FallingSand
                 materialOnFreeze = Water,
                 baseColour = new Color32(200, 200, 220, 255),
                 colourVariation = 20,
+            };
+
+            // Belt - conveyor belt structure tile (base, not used directly)
+            defs[Belt] = new MaterialDef
+            {
+                density = 255,
+                friction = 255,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.None,
+                baseColour = new Color32(60, 60, 70, 255),  // Dark gray
+                colourVariation = 0,
+            };
+
+            // Belt moving left - dark stripe (chevron pattern)
+            defs[BeltLeft] = new MaterialDef
+            {
+                density = 255,
+                friction = 255,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.None,
+                baseColour = new Color32(50, 50, 60, 255),  // Darker gray
+                colourVariation = 0,
+            };
+
+            // Belt moving right - dark stripe (chevron pattern)
+            defs[BeltRight] = new MaterialDef
+            {
+                density = 255,
+                friction = 255,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.None,
+                baseColour = new Color32(50, 50, 60, 255),  // Darker gray
+                colourVariation = 0,
+            };
+
+            // Belt moving left - light stripe (chevron pattern)
+            defs[BeltLeftLight] = new MaterialDef
+            {
+                density = 255,
+                friction = 255,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.None,
+                baseColour = new Color32(80, 80, 95, 255),  // Lighter gray
+                colourVariation = 0,
+            };
+
+            // Belt moving right - light stripe (chevron pattern)
+            defs[BeltRightLight] = new MaterialDef
+            {
+                density = 255,
+                friction = 255,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.None,
+                baseColour = new Color32(80, 80, 95, 255),  // Lighter gray
+                colourVariation = 0,
             };
 
             return defs;
