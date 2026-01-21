@@ -490,4 +490,28 @@ The trees interlock in meaningful ways:
 
 ---
 
+## Playtesting: Emergent Gameplay Expectations
+
+Throughout development, gather feedback from testers about **what they expect to happen** vs **what actually happens**.
+
+### Key Questions for Testers
+- "What did you think would happen when you combined X with Y?"
+- "Did the result match your expectation?"
+- "What surprised you? Good surprise or bad surprise?"
+- "What did you TRY that didn't work but felt like it should?"
+
+### Why This Matters
+- **Validates physics intuition** — If testers expect sand + heat = glass and it works, the simulation feels "real"
+- **Reveals missing interactions** — If testers keep trying something that doesn't exist, maybe it should
+- **Guides new content** — Tester expectations are a goldmine for what to add next
+- **Catches confusion** — If results consistently surprise testers negatively, the interaction might need rethinking
+
+### Process
+- [ ] Build playtesting sessions into each phase
+- [ ] Document tester expectations vs outcomes
+- [ ] Use "expected but missing" interactions as feature candidates
+- [ ] Prioritize additions that match common tester intuitions
+
+---
+
 *These progression trees provide 50+ hours of content with natural discovery curves and satisfying cross-system synergies.*
