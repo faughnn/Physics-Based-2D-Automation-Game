@@ -4,6 +4,50 @@ Three interconnected progression trees that unlock new materials, machines, and 
 
 ---
 
+## Core Design Philosophy
+
+### Game Identity
+- **Industrial automation at heart** — Factorio-style factory building is the core loop
+- **Not constrained to realism** — Fantasy and strange materials are welcome; the game extends physics rather than being limited to real-world mechanics
+- **Tone**: TBD (ruled out horror; considering curious/mysterious/whimsical)
+
+### Knowledge-Based Progression (Outer Wilds Style)
+Player knowledge IS progression. Like Outer Wilds or metroidvania games, a second playthrough is faster because YOU know more, not because your character has better stats.
+
+- **Knowledge Map** — Tracks discovered material interactions (like Outer Wilds' ship log)
+- **Players learn real rules** — Because the physics simulation is deterministic (sand + heat ALWAYS = glass), players learn actual systems, not arbitrary trivia
+- **"What happens if I..." is the core loop** — Experimentation and discovery drive engagement
+
+### Bucket/Goal System
+Buckets tell players WHAT to produce; players figure out HOW.
+
+- Bucket says "fill me with Molten Glass"
+- Player must: find sand → discover sand + heat = glass → discover more heat = molten → engineer delivery before it cools
+- **Buckets give literal unlocks** — Filling them unlocks new tech/machines/areas
+
+> **Design Tension**: Knowledge-as-progression suggests you could do anything if you knew how. Bucket unlocks gate progression literally. Both systems coexist — need to resolve how they interact. Perhaps: knowledge lets you ATTEMPT anything, but buckets unlock EFFICIENCY (better machines, faster belts) or ACCESS (deeper areas, new material sources)?
+
+### Multi-Axis Progression
+Progression happens on three fronts simultaneously:
+1. **Unlocking tech** — New machines and capabilities (via bucket system)
+2. **Going deeper** — Vertical descent opens new areas and stranger materials
+3. **Discovering recipes** — Knowledge map fills in as you witness interactions
+
+### Depth Progression
+- **Surface**: Normal physics, familiar materials (sand, water, stone, ore)
+- **Below**: Stranger materials, unusual properties
+- **Deep**: Fantasy materials, physics-bending interactions
+- Materials required for buckets may be deeper down, gating progress naturally
+
+### Environmental Hints
+Hidden text/lore underground hints at obscure material interactions players wouldn't discover naturally.
+
+Example: *"The masters combined ash of the void with tears of the mountain. The result burned cold."*
+
+Player must figure out what these poetic names refer to, then experiment.
+
+---
+
 ## Tree 1: Materials & Metallurgy (Industrial)
 
 *Focus: Mining, smelting, and refining raw materials into useful components.*
