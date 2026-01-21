@@ -1,8 +1,6 @@
-using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using FallingSand.Debugging;
-using FallingSand.Graphics;
 using FallingSand.UI;
 
 namespace FallingSand
@@ -20,13 +18,8 @@ namespace FallingSand
         [Header("References")]
         [SerializeField] private Shader worldShader;
 
-        private CellWorld world;
-        private CellRenderer cellRenderer;
-        private CellSimulatorJobbed simulator;
-        private ClusterManager clusterManager;
+        private SimulationManager simulation;
         private ClusterTestSpawner clusterTestSpawner;
-        private TerrainColliderManager terrainColliders;
-        private BeltManager beltManager;
         private DebugOverlay debugOverlay;
         private Camera mainCamera;
 
@@ -43,13 +36,13 @@ namespace FallingSand
         private Mouse mouse;
         private Keyboard keyboard;
 
-        public CellWorld World => world;
-        public CellSimulatorJobbed Simulator => simulator;
+        public CellWorld World => simulation?.World;
+        public CellSimulatorJobbed Simulator => simulation?.Simulator;
         public byte CurrentMaterial => currentMaterial;
         public string CurrentMaterialName => currentMaterial < materialNames.Length ? materialNames[currentMaterial] : $"Material {currentMaterial}";
         public bool BeltMode => beltMode;
         public sbyte BeltDirection => beltDirection;
-        public BeltManager BeltManager => beltManager;
+        public BeltManager BeltManager => simulation?.BeltManager;
 
         private void Start()
         {
@@ -60,42 +53,21 @@ namespace FallingSand
             keyboard = Keyboard.current;
             Debug.Log($"[SandboxController] Mouse: {(mouse != null ? "found" : "NULL")}, Keyboard: {(keyboard != null ? "found" : "NULL")}");
 
-            // Create the world
-            Debug.Log($"[SandboxController] Creating world {worldWidth}x{worldHeight}...");
-            world = new CellWorld(worldWidth, worldHeight);
-            Debug.Log($"[SandboxController] World created. Cells: {world.cells.Length}, Chunks: {world.chunks.Length}");
-
-            // Create the multithreaded simulator
-            simulator = new CellSimulatorJobbed();
-            Debug.Log("[SandboxController] CellSimulatorJobbed created");
-
-            // Create cluster manager (handles rigid body physics)
-            Debug.Log("[SandboxController] Creating ClusterManager...");
-            GameObject clusterManagerObj = new GameObject("ClusterManager");
-            clusterManager = clusterManagerObj.AddComponent<ClusterManager>();
-            clusterManager.Initialize(world);
-            Debug.Log("[SandboxController] ClusterManager created (Physics2D.autoSimulation disabled)");
+            // Find or create SimulationManager
+            simulation = SimulationManager.Instance;
+            if (simulation == null)
+            {
+                simulation = SimulationManager.Create(worldWidth, worldHeight);
+                simulation.Initialize();
+            }
+            Debug.Log("[SandboxController] SimulationManager ready");
 
             // Create cluster test spawner (handles 7/8/9 key spawning)
+            // Attach to ClusterManager's GameObject
+            GameObject clusterManagerObj = simulation.ClusterManager.gameObject;
             clusterTestSpawner = clusterManagerObj.AddComponent<ClusterTestSpawner>();
-            clusterTestSpawner.clusterManager = clusterManager;
-            clusterTestSpawner.world = world;
-
-            // Create terrain collider manager (for cluster-terrain collisions)
-            terrainColliders = clusterManagerObj.AddComponent<TerrainColliderManager>();
-            terrainColliders.Initialize(world);
-            Debug.Log("[SandboxController] TerrainColliderManager created");
-
-            // Create belt manager
-            beltManager = new BeltManager(world);
-            Debug.Log("[SandboxController] BeltManager created");
-
-            // Create renderer
-            Debug.Log("[SandboxController] Creating CellRenderer...");
-            GameObject rendererObj = new GameObject("CellRenderer");
-            cellRenderer = rendererObj.AddComponent<CellRenderer>();
-            cellRenderer.Initialize(world);
-            Debug.Log("[SandboxController] CellRenderer initialized");
+            clusterTestSpawner.clusterManager = simulation.ClusterManager;
+            clusterTestSpawner.world = simulation.World;
 
             // Setup camera
             Debug.Log("[SandboxController] Setting up camera...");
@@ -110,22 +82,17 @@ namespace FallingSand
             debugOverlay = debugObj.AddComponent<DebugOverlay>();
 
             // Register debug sections
-            debugOverlay.RegisterSection(new SimulationDebugSection(this));
-            debugOverlay.RegisterSection(new WorldDebugSection(world));
-            debugOverlay.RegisterSection(new ClusterDebugSection(clusterManager, world));
+            debugOverlay.RegisterSection(new SimulationDebugSection(simulation));
+            debugOverlay.RegisterSection(new WorldDebugSection(simulation.World));
+            debugOverlay.RegisterSection(new ClusterDebugSection(simulation.ClusterManager, simulation.World));
             debugOverlay.RegisterSection(new InputDebugSection(this));
-
-            // Create graphics manager (handles visual effects)
-            GameObject graphicsObj = new GameObject("GraphicsManager");
-            graphicsObj.AddComponent<GraphicsManager>();
-            Debug.Log("[SandboxController] GraphicsManager created");
 
             // Create settings menu (ESC to toggle)
             GameObject settingsObj = new GameObject("SettingsMenu");
             settingsObj.AddComponent<SettingsMenu>();
             Debug.Log("[SandboxController] SettingsMenu created");
 
-            Debug.Log($"[SandboxController] === READY === World: {worldWidth}x{worldHeight} cells ({world.chunksX}x{world.chunksY} chunks)");
+            Debug.Log($"[SandboxController] === READY === World: {simulation.WorldWidth}x{simulation.WorldHeight} cells");
             Debug.Log("[SandboxController] Cluster controls: 7=Circle, 8=Square, 9=L-Shape, [/]=Size");
             Debug.Log("[SandboxController] Belt controls: B=Toggle belt mode, Q/E=Rotate direction");
             Debug.Log("[SandboxController] Debug overlay: F3=Toggle, F4=Gizmos");
@@ -144,49 +111,18 @@ namespace FallingSand
             // Setup orthographic camera to view the world
             mainCamera.orthographic = true;
 
-            // Each cell = 2×2 pixels
-            const int PixelsPerCell = 2;
-            int pixelHeight = worldHeight * PixelsPerCell; // 512 * 2 = 1024 pixels
-
-            // Ortho size = half the height in world units
-            mainCamera.orthographicSize = pixelHeight / 2f; // 512
-            mainCamera.transform.position = new Vector3(0, 0, -10);
+            // Get recommended settings from SimulationManager
+            var (orthoSize, position) = simulation.GetRecommendedCameraSettings();
+            mainCamera.orthographicSize = orthoSize;
+            mainCamera.transform.position = position;
             mainCamera.backgroundColor = new Color(0.1f, 0.1f, 0.15f);
         }
 
-        private int frameCount = 0;
-
         private void Update()
         {
-            frameCount++;
-
             HandleInput();
             HandleMaterialSelection();
-
-            // Simulate physics (multithreaded) every frame
-            // Gravity is applied at fixed interval (PhysicsSettings.GravityInterval)
-            // clusterManager handles rigid body physics before cell simulation
-            // beltManager applies horizontal force to clusters resting on belts
-            simulator.Simulate(world, clusterManager, beltManager);
-
-            // Simulate belt movement (Burst-compiled parallel job)
-            JobHandle beltHandle = beltManager.ScheduleSimulateBelts(
-                world.cells, world.chunks, world.materials,
-                world.width, world.height,
-                world.chunksX, world.chunksY,
-                world.currentFrame);
-            beltHandle.Complete();
-
-            // Upload texture changes
-            cellRenderer.UploadFullTexture();
-
-            // Log active chunks periodically
-            if (frameCount % 60 == 0)
-            {
-                int activeChunks = world.CountActiveChunks();
-                int totalChunks = world.chunksX * world.chunksY;
-                Debug.Log($"[Chunks] Active: {activeChunks}/{totalChunks} ({(activeChunks * 100f / totalChunks):F1}%)");
-            }
+            // Simulation loop is now handled by SimulationManager
         }
 
         private void HandleInput()
@@ -290,8 +226,8 @@ namespace FallingSand
             // Quad spans from -worldWidth to +worldWidth (2x scale)
             // So world X range is -worldWidth to +worldWidth
             // Cell X = (worldX + worldWidth) / 2
-            int cellX = Mathf.FloorToInt((mouseWorldPos.x + worldWidth) / 2f);
-            int cellY = Mathf.FloorToInt((worldHeight - mouseWorldPos.y) / 2f); // Flip Y for Y=0 at top
+            int cellX = Mathf.FloorToInt((mouseWorldPos.x + simulation.WorldWidth) / 2f);
+            int cellY = Mathf.FloorToInt((simulation.WorldHeight - mouseWorldPos.y) / 2f); // Flip Y for Y=0 at top
 
             paintLogCount++;
             if (paintLogCount <= 5 || paintLogCount % 30 == 0)
@@ -304,6 +240,8 @@ namespace FallingSand
 
             // Check if we're painting/erasing static materials (need to update terrain colliders)
             bool affectsColliders = materialId == Materials.Stone || materialId == Materials.Air;
+            var world = simulation.World;
+            var terrainColliders = simulation.TerrainColliders;
 
             for (int dy = -brushSize; dy <= brushSize; dy++)
             {
@@ -341,8 +279,8 @@ namespace FallingSand
             Vector2 mousePos = mouse.position.ReadValue();
             Vector3 mouseWorldPos = mainCamera.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0));
 
-            int cellX = Mathf.FloorToInt((mouseWorldPos.x + worldWidth) / 2f);
-            int cellY = Mathf.FloorToInt((worldHeight - mouseWorldPos.y) / 2f);
+            int cellX = Mathf.FloorToInt((mouseWorldPos.x + simulation.WorldWidth) / 2f);
+            int cellY = Mathf.FloorToInt((simulation.WorldHeight - mouseWorldPos.y) / 2f);
 
             return new Vector2Int(cellX, cellY);
         }
@@ -358,7 +296,7 @@ namespace FallingSand
             int gridY = BeltManager.SnapToGrid(y);
 
             // BeltManager handles grid snapping internally
-            if (beltManager.PlaceBelt(cell.x, y, beltDirection))
+            if (simulation.BeltManager.PlaceBelt(cell.x, y, beltDirection))
             {
                 // Mark chunks dirty for terrain collider regeneration (belts are static)
                 MarkBeltChunksDirty(gridX, gridY);
@@ -374,7 +312,7 @@ namespace FallingSand
             int gridY = BeltManager.SnapToGrid(cell.y);
 
             // BeltManager handles grid snapping internally
-            if (beltManager.RemoveBelt(cell.x, cell.y))
+            if (simulation.BeltManager.RemoveBelt(cell.x, cell.y))
             {
                 // Mark chunks dirty for terrain collider regeneration
                 MarkBeltChunksDirty(gridX, gridY);
@@ -384,6 +322,7 @@ namespace FallingSand
         private void MarkBeltChunksDirty(int gridX, int gridY)
         {
             // Mark all chunks covered by the 8x8 belt block
+            var terrainColliders = simulation.TerrainColliders;
             for (int dy = 0; dy < 8; dy++)
             {
                 for (int dx = 0; dx < 8; dx++)
@@ -392,12 +331,6 @@ namespace FallingSand
                 }
             }
         }
-
-        private void OnDestroy()
-        {
-            beltManager?.Dispose();
-            simulator?.Dispose();
-            world?.Dispose();
-        }
+        // Note: OnDestroy() removed - SimulationManager handles disposal of simulation resources
     }
 }

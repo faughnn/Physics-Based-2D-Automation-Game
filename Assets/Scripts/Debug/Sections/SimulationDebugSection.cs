@@ -12,16 +12,16 @@ namespace FallingSand.Debugging
         public override string SectionName => "Simulation";
         public override int Priority => 10;
 
-        private readonly SandboxController sandbox;
+        private readonly SimulationManager simulation;
 
         private float deltaTime;
         private int cachedFps;
         private float cachedSimTimeMs;
         private int workerThreadCount;
 
-        public SimulationDebugSection(SandboxController sandbox)
+        public SimulationDebugSection(SimulationManager simulation)
         {
-            this.sandbox = sandbox;
+            this.simulation = simulation;
             workerThreadCount = JobsUtility.JobWorkerCount;
         }
 
@@ -29,9 +29,9 @@ namespace FallingSand.Debugging
         {
             cachedFps = Mathf.RoundToInt(1f / deltaTime);
 
-            if (sandbox != null && sandbox.Simulator != null)
+            if (simulation != null && simulation.Simulator != null)
             {
-                cachedSimTimeMs = sandbox.Simulator.LastSimulationTimeMs;
+                cachedSimTimeMs = simulation.Simulator.LastSimulationTimeMs;
             }
         }
 
