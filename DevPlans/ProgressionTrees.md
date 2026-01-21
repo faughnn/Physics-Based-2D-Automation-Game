@@ -46,6 +46,13 @@ Example: *"The masters combined ash of the void with tears of the mountain. The 
 
 Player must figure out what these poetic names refer to, then experiment.
 
+### World Generation (TBD)
+Approach undecided. One option to consider:
+
+- **Herringbone Wang Tiles** — Procedural generation technique that creates seamless, non-repeating patterns. Could be used for terrain, ore veins, cave systems, etc.
+
+Other options to explore as design progresses.
+
 ---
 
 ## Tree 1: Materials & Metallurgy (Industrial)
