@@ -18,12 +18,12 @@ Dirt will be a `BehaviourType.Powder` material with high friction. The simulatio
 
 **New constant in `Materials` class:**
 ```csharp
-public const byte Dirt = 17;
+public const byte Dirt = 21;  // Note: 17-20 reserved for Lift system
 ```
 
 **New material definition:**
 ```csharp
-defs[Dirt] = new MaterialDef
+defs[Dirt] = new MaterialDef  // ID 21
 {
     density = 140,                              // Heavier than sand (128)
     friction = 200,                             // High friction (sand = 20)

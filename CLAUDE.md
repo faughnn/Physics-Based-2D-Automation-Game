@@ -30,6 +30,41 @@
 
 ---
 
+## Separation of Concerns: Game vs Simulation
+
+The codebase has two distinct layers that must remain separate:
+
+**Simulation Layer** (`Assets/Scripts/Simulation/`)
+- Cell world, materials, physics
+- Clusters and rigid body simulation
+- Belts, structures, terrain colliders
+- Rendering of the cell world
+- Reusable by any scene (Sandbox, Game, etc.)
+
+**Sandbox Layer** (`Assets/Scripts/` - SandboxController, etc.)
+- Material painting and brush tools
+- Debug cluster spawning
+- Belt placement tools
+- Development/testing utilities
+
+**Game Layer** (`Assets/Scripts/Game/`)
+- Player character and controls
+- Game-specific mechanics and rules
+- Camera follow, UI, scoring, etc.
+
+**Rules:**
+- Changes to materials, cell physics, belts, clusters, or world simulation → `Assets/Scripts/Simulation/`
+- Changes to painting tools, debug spawning, or sandbox features → Sandbox layer
+- Changes to player, game mechanics, or game-specific features → `Assets/Scripts/Game/`
+- Simulation code must NEVER reference Sandbox or Game code
+- Sandbox and Game use `SimulationManager` to access simulation systems
+
+**Scene Controllers:**
+- `SandboxController` - Sandbox scene, painting tools, debug spawning
+- `GameController` - Game scene, player spawning, game logic
+
+---
+
 ## Debug Overlay System
 
 All debug visualization and metrics display goes through the unified `DebugOverlay` system in `Assets/Scripts/Debug/`.
