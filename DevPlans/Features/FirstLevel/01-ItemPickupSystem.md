@@ -44,28 +44,34 @@ namespace FallingSand
 }
 ```
 
-### Player Physics Requirements
+### Trigger Detection Requirements
 
-**IMPORTANT**: For `OnTriggerEnter2D` to work, the player GameObject MUST have:
+For `OnTriggerEnter2D` to fire in Unity 2D:
+- Both objects need a **Collider2D**
+- At least one collider must be a **trigger**
+- **At least ONE object needs a Rigidbody2D** (otherwise no trigger events fire)
 
-1. **Rigidbody2D** - Required for any 2D physics/trigger detection
-   - `bodyType = Dynamic` (for gravity and movement)
-   - `gravityScale = 1` (or as needed)
-   - `freezeRotation = true` (prevent tumbling)
+**Option A: Player has Rigidbody2D** (recommended if player uses physics for movement/gravity)
+- Player: Rigidbody2D (dynamic) + Collider2D (solid)
+- Item: Collider2D (trigger), no Rigidbody2D needed
 
-2. **Collider2D** - Required for trigger detection with items
-   - Recommended: `CapsuleCollider2D` (pill shape for smooth movement over terrain)
-   - Alternative: `BoxCollider2D` (simpler but may catch on edges)
-   - `isTrigger = false` (solid collider for terrain collision)
+**Option B: Item has Rigidbody2D** (if player is purely kinematic)
+- Player: Collider2D only (solid)
+- Item: Rigidbody2D (kinematic) + Collider2D (trigger)
 
-The player's solid collider will detect overlaps with item trigger colliders, firing `OnTriggerEnter2D` on the PlayerController.
+Since the player will likely need physics for gravity and terrain collision (like clusters do), **Option A is recommended**.
+
+### Player Physics Setup (Option A)
 
 ```csharp
 // In GameController.CreatePlayer():
+
+// Rigidbody2D for physics and trigger detection
 var rb = player.AddComponent<Rigidbody2D>();
 rb.gravityScale = 1f;
 rb.freezeRotation = true;
 
+// Collider for terrain collision (NOT a trigger)
 var collider = player.AddComponent<CapsuleCollider2D>();
 collider.size = new Vector2(12, 24);  // ~6x12 cells (player is ~16 cells tall)
 collider.direction = CapsuleDirection2D.Vertical;
@@ -79,6 +85,9 @@ Items in the world are GameObjects with:
 - `WorldItem` component for item data
 
 ```csharp
+using System.Collections;
+using UnityEngine;
+
 namespace FallingSand
 {
     public class WorldItem : MonoBehaviour
@@ -108,6 +117,26 @@ namespace FallingSand
 
             // Play pickup sound (procedural beep)
             PlayPickupSound();
+
+            // Play scale pop animation then destroy
+            StartCoroutine(CollectAnimation());
+        }
+
+        private IEnumerator CollectAnimation()
+        {
+            float duration = 0.15f;
+            float elapsed = 0f;
+            Vector3 startScale = transform.localScale;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / duration;
+                // Quick scale up then down
+                float scale = 1f + Mathf.Sin(t * Mathf.PI) * 0.5f;
+                transform.localScale = startScale * scale;
+                yield return null;
+            }
 
             Destroy(gameObject);
         }
