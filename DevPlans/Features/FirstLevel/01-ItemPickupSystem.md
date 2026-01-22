@@ -59,23 +59,26 @@ For `OnTriggerEnter2D` to fire in Unity 2D:
 - Player: Collider2D only (solid)
 - Item: Rigidbody2D (kinematic) + Collider2D (trigger)
 
-Since the player will likely need physics for gravity and terrain collision (like clusters do), **Option A is recommended**.
+Since the player uses physics for gravity and terrain collision (like clusters), **Option A is used**.
 
-### Player Physics Setup (Option A)
+### Player Physics Setup — ALREADY IMPLEMENTED ✓
+
+The following already exists in `GameController.CreatePlayer()`:
 
 ```csharp
-// In GameController.CreatePlayer():
-
-// Rigidbody2D for physics and trigger detection
+// Rigidbody2D - dynamic body affected by physics
 var rb = player.AddComponent<Rigidbody2D>();
+rb.bodyType = RigidbodyType2D.Dynamic;
 rb.gravityScale = 1f;
-rb.freezeRotation = true;
+rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
 
-// Collider for terrain collision (NOT a trigger)
-var collider = player.AddComponent<CapsuleCollider2D>();
-collider.size = new Vector2(12, 24);  // ~6x12 cells (player is ~16 cells tall)
-collider.direction = CapsuleDirection2D.Vertical;
+// BoxCollider2D - 8x16 cells = 16x32 world units
+var collider = player.AddComponent<BoxCollider2D>();
+collider.size = new Vector2(16, 32);
 ```
+
+**Status**: Player already has Rigidbody2D + BoxCollider2D. Trigger detection requirements are met.
 
 ### WorldItem Component
 
@@ -366,18 +369,31 @@ Configure in Unity:
 
 ### With PlayerController
 
-- **Required components**: Rigidbody2D + CapsuleCollider2D (see Player Physics Requirements)
+**Already implemented:**
+- ✅ Rigidbody2D (dynamic, freeze rotation, continuous collision)
+- ✅ BoxCollider2D (16×32 world units = 8×16 cells)
+- ✅ Movement (A/D, arrows) + Jump (Space)
+- ✅ Ground detection via BoxCast
+
+**Needs to be added:**
 - Add `EquippedTool` property for other systems to query
 - Add `Inventory` property to check collected tools
 - Add `HasTool()` method for quick checks
 - Add `OnToolEquipped` and `OnToolCollected` events for UI feedback
-- Pickup happens automatically via OnTriggerEnter2D
+- Add `OnTriggerEnter2D` for item pickup
 
 ### With GameController
 
-- Spawn items during level setup (in Start or separate method)
-- Can be extended to read item positions from level data
-- Must ensure player has required physics components
+**Already implemented:**
+- ✅ SimulationManager setup
+- ✅ Camera setup
+- ✅ Initial terrain creation
+- ✅ Player creation with physics components
+
+**Needs to be added:**
+- Add `CreateShovelItem()` method
+- Add `CreateShovelSprite()` helper
+- Call item spawning from Start() or level loader
 
 ### With Future Systems
 
@@ -390,10 +406,10 @@ Configure in Unity:
 
 ## Testing Checklist
 
-### Player Setup
-- [ ] Player has Rigidbody2D with correct settings (dynamic, gravity, freeze rotation)
-- [ ] Player has CapsuleCollider2D (or BoxCollider2D) for trigger detection
-- [ ] Player collider is NOT a trigger (solid for terrain collision)
+### Player Setup (Already Done ✓)
+- [x] Player has Rigidbody2D with correct settings (dynamic, gravity, freeze rotation)
+- [x] Player has BoxCollider2D (16×32 world units) for trigger detection
+- [x] Player collider is NOT a trigger (solid for terrain collision)
 
 ### Item Spawning
 - [ ] Shovel spawns at specified position
@@ -421,8 +437,7 @@ Configure in Unity:
 1. **Drop Tool**: Player can drop currently equipped tool back into the world
 2. **Tool Hotbar UI**: Visual display of inventory with keybinds to switch tools
 3. **Visual Indicator**: Show equipped tool on player sprite
-4. **Pickup Animation**: Brief scale/fade animation on collect (scale pop)
-5. **Asset-based Audio**: Replace procedural beep with proper sound file
+4. **Asset-based Audio**: Replace procedural beep with proper sound file
 
 ---
 
@@ -440,25 +455,32 @@ Following the project's architecture philosophy:
 
 ## Implementation Order
 
+### Already Done ✓
+- [x] PlayerController exists with movement, jump, ground detection
+- [x] GameController exists with simulation, camera, terrain, player creation
+- [x] Player has Rigidbody2D (dynamic, freeze rotation, continuous collision)
+- [x] Player has BoxCollider2D (16×32 world units)
+
 ### Phase 1: Core Types
-1. Create `ToolType.cs` enum
-2. Create `WorldItem.cs` component (with null check and pickup sound)
+1. Create `Assets/Scripts/Game/Items/ToolType.cs` enum
+2. Create `Assets/Scripts/Game/Items/WorldItem.cs` component
 
-### Phase 2: Player Setup
-3. Ensure PlayerController has Rigidbody2D (dynamic, freeze rotation)
-4. Ensure PlayerController has CapsuleCollider2D (NOT trigger)
-5. Add inventory HashSet and equippedTool field to PlayerController
-6. Add public properties: EquippedTool, Inventory, HasTool()
-7. Add OnTriggerEnter2D pickup logic to PlayerController
-8. Add OnToolEquipped and OnToolCollected events
+### Phase 2: PlayerController Extensions
+3. Add `using System.Collections.Generic;` for HashSet
+4. Add inventory HashSet and equippedTool fields
+5. Add public properties: EquippedTool, Inventory, HasTool()
+6. Add OnToolEquipped and OnToolCollected events
+7. Add OnTriggerEnter2D pickup logic
 
-### Phase 3: Spawning
-9. Add CreateShovelItem method to GameController
-10. Call from Start() to spawn test shovel
+### Phase 3: Item Spawning
+8. Add CreateShovelItem() method to GameController
+9. Add CreateShovelSprite() helper method
+10. Call CreateShovelItem() from Start() to spawn test shovel
 
 ### Phase 4: Testing
 11. Play test: walk over shovel, verify pickup
-12. Verify pickup sound plays
-13. Verify EquippedTool and HasTool() work
-14. Test picking up second tool (should silently replace equipped)
-15. Test EquipTool() to switch between inventory items
+12. Verify scale pop animation plays
+13. Verify pickup sound plays (procedural beep)
+14. Verify EquippedTool and HasTool() work
+15. Test picking up second tool (should silently replace equipped)
+16. Test EquipTool() to switch between inventory items
