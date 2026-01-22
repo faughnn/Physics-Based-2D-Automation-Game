@@ -45,8 +45,8 @@ namespace FallingSand
         public int gravity;      // Gravity applied on gravity frames (usually 1)
         public int maxVelocity;  // Maximum velocity in cells/frame (usually 16)
 
-        // Buffer size around each chunk
-        private const int BufferSize = 16;
+        // Buffer size around each chunk (15 to create 2-cell gap between same-group chunks)
+        private const int BufferSize = 15;
         private const int ChunkSize = 32;
 
         public void Execute(int jobIndex)
@@ -157,6 +157,21 @@ namespace FallingSand
             }
 
             // Can't fall straight - try diagonals
+            // Check slide resistance: higher values = less likely to slide diagonally
+            if (mat.slideResistance > 0)
+            {
+                // Use position-only hash (no currentFrame) so decision is consistent per-position
+                uint hash = HashPosition(x, y, 0);
+                if ((hash & 255) < mat.slideResistance)
+                {
+                    // Too resistant to slide - stay put
+                    cell.velocityX = 0;
+                    cell.velocityY = 0;
+                    cells[y * width + x] = cell;
+                    return;
+                }
+            }
+
             // Randomize direction to avoid bias
             bool tryLeftFirst = ((x + y + currentFrame) & 1) == 0;
             int dx1 = tryLeftFirst ? -1 : 1;

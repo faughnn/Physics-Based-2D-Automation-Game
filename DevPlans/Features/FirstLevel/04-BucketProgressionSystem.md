@@ -170,6 +170,16 @@ namespace FallingSand
         // Singleton access
         public static ProgressionManager Instance { get; private set; }
 
+        private void Awake()
+        {
+            if (Instance != null && Instance != this)
+            {
+                Destroy(gameObject);
+                return;
+            }
+            Instance = this;
+        }
+
         // Events for UI and game logic
         public event System.Action<byte, int, int> OnMaterialCollected;  // materialId, newCount, required
         public event System.Action<Ability> OnAbilityUnlocked;
@@ -281,33 +291,90 @@ namespace FallingSand
         [SerializeField] private int wallThickness = 2;    // Wall thickness in cells
 
         [Header("Visual")]
-        [SerializeField] private Color bucketColor = new Color(0.4f, 0.35f, 0.3f);
+        [SerializeField] private Color glowColor = new Color(0.3f, 0.8f, 0.4f, 0.3f);  // Subtle green glow
+        private SpriteRenderer glowRenderer;
 
         private CollectionZone collectionZone;
         private CellWorld world;
+        private bool collectionEnabled = true;
 
         public void Initialize(CellWorld world, Vector2Int cellPosition)
         {
             this.world = world;
 
-            // Calculate interior bounds (collection zone)
+            // Calculate interior bounds
             int interiorX = cellPosition.x + wallThickness;
-            int interiorY = cellPosition.y + wallThickness;
 
-            RectInt interiorBounds = new RectInt(
+            // Collection zone is a thin strip near the bottom (2 cells high)
+            // This allows cells to accumulate visually before being collected
+            int collectionZoneHeight = 2;
+            int collectionZoneY = cellPosition.y + depthInCells - collectionZoneHeight;
+
+            RectInt collectionBounds = new RectInt(
                 interiorX,
-                interiorY,
+                collectionZoneY,
                 widthInCells,
-                depthInCells
+                collectionZoneHeight
             );
 
-            collectionZone = new CollectionZone(world, interiorBounds);
+            collectionZone = new CollectionZone(world, collectionBounds);
 
             // Create bucket walls using Stone material
             CreateBucketWalls(cellPosition);
 
-            // Position the Unity transform for rendering
-            PositionTransform(cellPosition);
+            // Create visual glow for collection zone
+            CreateCollectionZoneGlow(collectionBounds);
+
+            // Subscribe to objective completion to disable collection
+            if (ProgressionManager.Instance != null)
+            {
+                ProgressionManager.Instance.OnObjectiveCompleted += HandleObjectiveCompleted;
+            }
+        }
+
+        private void HandleObjectiveCompleted(ObjectiveData objective)
+        {
+            // Disable collection once objective is done
+            collectionEnabled = false;
+
+            // Fade out the glow effect
+            if (glowRenderer != null)
+            {
+                glowRenderer.color = new Color(glowColor.r, glowColor.g, glowColor.b, 0f);
+            }
+        }
+
+        private void CreateCollectionZoneGlow(RectInt zoneBounds)
+        {
+            // Create child object for glow effect
+            GameObject glowObj = new GameObject("CollectionZoneGlow");
+            glowObj.transform.SetParent(transform);
+
+            glowRenderer = glowObj.AddComponent<SpriteRenderer>();
+            glowRenderer.sprite = CreateGlowSprite();
+            glowRenderer.color = glowColor;
+            glowRenderer.sortingOrder = -1;  // Behind cells
+
+            // Position and scale to match zone bounds (convert cell coords to world)
+            float worldWidth = zoneBounds.width * 2f;
+            float worldHeight = zoneBounds.height * 2f;
+
+            // Cell (0,0) is top-left, Y increases downward
+            // World coords: center of zone
+            float centerX = (zoneBounds.x + zoneBounds.width / 2f) * 2f - world.width;
+            float centerY = world.height - (zoneBounds.y + zoneBounds.height / 2f) * 2f;
+
+            glowObj.transform.position = new Vector3(centerX, centerY, 0);
+            glowObj.transform.localScale = new Vector3(worldWidth, worldHeight, 1);
+        }
+
+        private Sprite CreateGlowSprite()
+        {
+            // Create a simple 1x1 white texture for the glow
+            Texture2D tex = new Texture2D(1, 1);
+            tex.SetPixel(0, 0, Color.white);
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1f);
         }
 
         private void CreateBucketWalls(Vector2Int pos)
@@ -333,18 +400,20 @@ namespace FallingSand
                 }
             }
 
-            // Bottom wall
+            // Bottom wall (directly below the interior)
             for (int x = 0; x < totalWidth; x++)
             {
                 for (int y = 0; y < wallThickness; y++)
                 {
-                    world.SetCell(pos.x + x, pos.y + depthInCells + wallThickness + y, Materials.Stone);
+                    world.SetCell(pos.x + x, pos.y + depthInCells + y, Materials.Stone);
                 }
             }
         }
 
         private void Update()
         {
+            if (!collectionEnabled) return;
+
             // Collect cells each frame
             var collected = collectionZone.CollectCells();
 
@@ -359,17 +428,18 @@ namespace FallingSand
 
 ### Collection Zone Position
 
-The collection zone covers the interior of the bucket, typically a few cells above the bottom. This creates the effect of cells falling in and being collected:
+The collection zone is a **thin strip near the bottom** of the bucket interior. Cells fall and accumulate visually, then are collected when they reach the bottom:
 
 ```
      ___________      <- Opening (no wall)
     |           |
-    | ZONE HERE | <- CollectionZone scans this area
-    |           |
-    |___________|    <- Bottom wall
+    |  (cells   |     <- Cells pile up visually
+    |   fall)   |
+    |==ZONE=====|     <- Thin collection zone (2-3 cells high)
+    |___________|     <- Bottom wall
 ```
 
-When cells enter the zone, they're removed and counted. The zone should be positioned slightly above the bottom so cells have time to "fall in" before being collected.
+This creates satisfying visual feedback - players see dirt accumulating before it's collected.
 
 ---
 
@@ -403,7 +473,14 @@ namespace FallingSand
             {
                 progression.OnMaterialCollected += HandleMaterialCollected;
                 progression.OnAbilityUnlocked += HandleAbilityUnlocked;
+                progression.OnObjectiveCompleted += HandleObjectiveCompleted;
             }
+        }
+
+        private void HandleObjectiveCompleted(ObjectiveData objective)
+        {
+            // Clear progress display when objective is done
+            hasActiveObjective = false;
         }
 
         private void HandleMaterialCollected(byte materialId, int current, int required)
@@ -504,10 +581,12 @@ namespace FallingSand
 
 ## Gating Belt Placement
 
-The belt placement system (likely in PlayerController or a separate PlacementController) should check `ProgressionManager.IsUnlocked(Ability.PlaceBelts)` before allowing belt placement:
+> **Note:** Belt placement in the Game scene is a separate feature. This plan provides the progression infrastructure; the belt placement system will check `IsUnlocked()` when implemented.
+
+The belt placement system (to be implemented separately) should check `ProgressionManager.IsUnlocked(Ability.PlaceBelts)` before allowing belt placement:
 
 ```csharp
-// In placement input handling:
+// In placement input handling (future belt placement feature):
 if (Input.GetKeyDown(KeyCode.B))
 {
     if (ProgressionManager.Instance.IsUnlocked(Ability.PlaceBelts))
@@ -560,8 +639,13 @@ private void CreateBucket()
     GameObject bucketObj = new GameObject("Bucket");
     Bucket bucket = bucketObj.AddComponent<Bucket>();
 
-    // Position bucket in cell coordinates (e.g., bottom-center of world)
-    Vector2Int bucketCellPos = new Vector2Int(worldWidth / 2 - 10, worldHeight - 80);
+    // Position bucket on flat ground near player spawn
+    // Player spawns at playerSpawnPoint, bucket goes to the right of spawn
+    Vector2 spawnWorld = playerSpawnPoint.position;
+    Vector2Int spawnCell = CoordinateHelper.WorldToCell(spawnWorld, worldWidth, worldHeight);
+
+    // Place bucket 20 cells to the right of player spawn, at same ground level
+    Vector2Int bucketCellPos = new Vector2Int(spawnCell.x + 20, spawnCell.y);
     bucket.Initialize(simulation.World, bucketCellPos);
 }
 ```
@@ -615,10 +699,13 @@ defs[Dirt] = new MaterialDef
 14. Display unlock notification
 15. Test: UI updates as materials collected
 
-### Phase 5: Ability Gating
-16. Add ability check to belt placement
-17. Test: Can't place belts until objective complete
-18. Test: Full flow - fill bucket, unlock belts, place belts
+### Phase 5: Integration Testing
+16. Test: Full flow - drop dirt into bucket, watch it accumulate, see progress update
+17. Test: Objective completes at 20 dirt, unlock notification appears
+18. Test: Bucket stops collecting after objective complete
+19. Test: `ProgressionManager.IsUnlocked(Ability.PlaceBelts)` returns true after unlock
+
+> **Note:** Actual belt placement testing deferred to separate belt placement feature.
 
 ---
 

@@ -65,6 +65,50 @@ The codebase has two distinct layers that must remain separate:
 
 ---
 
+## Chunk Threading Architecture
+
+The simulation uses a **4-pass checkerboard pattern** to enable parallel chunk processing without race conditions.
+
+**Chunk Groups:**
+```
+A B A B A B A B
+C D C D C D C D
+A B A B A B A B
+```
+
+Group assignment: `group = (chunkX & 1) + ((chunkY & 1) << 1)`
+- Group A (0): even X, even Y
+- Group B (1): odd X, even Y
+- Group C (2): even X, odd Y
+- Group D (3): odd X, odd Y
+
+**Why 4 Groups?**
+- Each chunk (32x32 cells) processes an extended region with a 15-cell buffer
+- Same-group chunks are 2 chunks apart (64 cells)
+- Their extended regions (32 + 15 + 15 = 62 cells wide) leave a 2-cell gap
+- This gap ensures same-group chunks can READ but not WRITE adjacent cells
+- Cell velocity is capped at 15 cells/frame, matching the buffer size
+
+**Execution:**
+1. Groups A, B, C, D are scheduled sequentially (with dependencies)
+2. Within each group, chunks run in parallel across worker threads
+3. Each chunk processes bottom-to-top with alternating X direction per row
+
+**Dirty Chunk Optimization:**
+Only "active" chunks are simulated. A chunk is active if:
+- It has the `IsDirty` flag set (something moved into/within it)
+- It was active last frame (`activeLastFrame != 0`)
+- It contains a structure (`HasStructure` flag)
+
+When a cell moves, `MarkDirtyInternal()` is called for both old and new positions. Cells that don't move do NOT mark dirty, allowing chunks to go inactive.
+
+**Key Files:**
+- `CellSimulatorJobbed.cs` - Orchestrates the 4-pass scheduling
+- `CellWorld.cs` - `CollectChunkGroups()` assigns chunks to groups
+- `SimulateChunksJob.cs` - Burst-compiled job that processes each chunk
+
+---
+
 ## Debug Overlay System
 
 All debug visualization and metrics display goes through the unified `DebugOverlay` system in `Assets/Scripts/Debug/`.

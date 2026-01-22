@@ -31,7 +31,6 @@ public const byte Diggable = 1 << 4;  // Can be excavated by player
 defs[Ground] = new MaterialDef
 {
     density = 255,                              // Maximum density (static)
-    friction = 255,                             // Maximum friction (static)
     behaviour = BehaviourType.Static,
     flags = MaterialFlags.ConductsHeat | MaterialFlags.Diggable,
     baseColour = new Color32(92, 64, 51, 255),  // Dark brown (darker than Dirt's 139, 90, 43)
@@ -49,7 +48,7 @@ defs[Ground] = new MaterialDef
 ### Diggable Flag
 The `Diggable` flag is a property marker that the Game layer can query to determine which materials can be excavated. This follows the existing flags pattern (ConductsHeat, Flammable, etc.) and allows for future diggable materials without special-case code.
 
-**Helper method (optional):**
+**Helper method in `Materials` class (alongside `IsBelt()`):**
 ```csharp
 public static bool IsDiggable(MaterialDef mat)
 {
@@ -85,13 +84,13 @@ public static bool IsDiggable(MaterialDef mat)
 
 ## Notes
 - The digging mechanic itself is **not** part of this plan - that belongs in Game layer
-- This material ID (18) assumes Dirt (17) is implemented first per PLANNED-DirtMaterial.md
+- This material ID (18) follows Dirt (17) which is already implemented (see DONE-DirtMaterial.md)
 - Ground does NOT need special handling in SimulateChunksJob - it's just a static material
 
 ## Priority
-Medium - Required for terrain gameplay, but depends on Dirt material being implemented first.
+Medium - Required for terrain gameplay. Dirt dependency is already satisfied.
 
 ## Related Files
 - `Assets/Scripts/Simulation/MaterialDef.cs` - Material definitions
 - `Assets/Scripts/Simulation/Clusters/TerrainColliderManager.cs` - Static collision
-- `DevPlans/Features/PLANNED-DirtMaterial.md` - Dirt material (dependency)
+- `DevPlans/Features/DONE-DirtMaterial.md` - Dirt material (already implemented)

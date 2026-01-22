@@ -18,6 +18,10 @@ namespace FallingSand
         [SerializeField] private float moveSpeed = 200f;
         [SerializeField] private float jumpForce = 400f;
 
+        [Header("Item Settings")]
+        [SerializeField] private Color shovelColor = new Color(0.6f, 0.4f, 0.2f); // Brown
+        [SerializeField] private Vector2 shovelSpawnCell = new Vector2(650, 458);  // Further right, above floor
+
         private SimulationManager simulation;
         private GameObject player;
         private Camera mainCamera;
@@ -43,6 +47,9 @@ namespace FallingSand
 
             // Create the player
             CreatePlayer();
+
+            // Spawn items
+            CreateShovelItem(shovelSpawnCell);
 
             Debug.Log($"[GameController] === READY === World: {simulation.WorldWidth}x{simulation.WorldHeight}");
             Debug.Log("[GameController] Controls: A/D or Arrows = Move, Space = Jump");
@@ -156,6 +163,68 @@ namespace FallingSand
                 new Vector2(0.5f, 0.5f),
                 1f  // 1 pixel per unit
             );
+        }
+
+        private void CreateShovelItem(Vector2 cellPosition)
+        {
+            GameObject item = new GameObject("Shovel");
+
+            // Visual - sprite is 16x64 pixels at PPU=2, resulting in 8x32 world units (player height)
+            var sr = item.AddComponent<SpriteRenderer>();
+            sr.sprite = CreateShovelSprite();
+            sr.color = shovelColor;
+            sr.sortingOrder = 5; // Below player (10), above terrain
+
+            // Trigger collider for pickup - matches sprite size (8x32 world units)
+            var collider = item.AddComponent<BoxCollider2D>();
+            collider.size = new Vector2(8, 32);
+            collider.isTrigger = true;
+
+            // Item component
+            item.AddComponent<WorldItem>();
+
+            // Position in world coordinates
+            float worldX = cellPosition.x * 2 - worldWidth;
+            float worldY = worldHeight - cellPosition.y * 2;
+            item.transform.position = new Vector3(worldX, worldY, 0);
+
+            Debug.Log($"[GameController] Shovel spawned at cell ({cellPosition.x}, {cellPosition.y}) -> world ({worldX}, {worldY})");
+        }
+
+        private Sprite CreateShovelSprite()
+        {
+            // 16x64 pixel texture at PPU=2 = 8x32 world units (same height as player)
+            int width = 16, height = 64;
+            Texture2D tex = new Texture2D(width, height);
+            tex.filterMode = FilterMode.Point;
+
+            Color[] pixels = new Color[width * height];
+            // Fill with transparent
+            for (int i = 0; i < pixels.Length; i++)
+                pixels[i] = Color.clear;
+
+            // Draw shovel shape
+            int bladeHeight = 20;  // Bottom portion - wider blade
+            int handleWidth = 4;   // Thin handle
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    // Handle (thin, top portion)
+                    if (y >= bladeHeight && x >= (width - handleWidth) / 2 && x < (width + handleWidth) / 2)
+                        pixels[y * width + x] = Color.white;
+                    // Blade (wider, bottom portion)
+                    else if (y < bladeHeight && x >= 2 && x < width - 2)
+                        pixels[y * width + x] = Color.white;
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply();
+
+            // PPU=2: 16x64 pixels becomes 8x32 world units
+            return Sprite.Create(tex, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f), 2f);
         }
 
         /// <summary>

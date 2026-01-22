@@ -18,13 +18,14 @@ namespace FallingSand
         public const byte Flammable    = 1 << 1;
         public const byte Conductive   = 1 << 2;  // Electricity
         public const byte Corrodes     = 1 << 3;  // Acid-like
+        public const byte Diggable     = 1 << 4;  // Can be excavated by player
     }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct MaterialDef
     {
         public byte density;            // For displacement (0-255, higher sinks)
-        public byte friction;           // Affects horizontal spread (0-255)
+        public byte slideResistance;    // Powder only: resistance to diagonal sliding (0-255, higher = steeper piles)
         public BehaviourType behaviour; // Powder, Liquid, Gas, Static
         public byte flags;              // MaterialFlags
 
@@ -64,6 +65,8 @@ namespace FallingSand
         public const byte BeltRight = 14;  // Belt moving right (dark stripe)
         public const byte BeltLeftLight = 15;   // Belt moving left (light stripe)
         public const byte BeltRightLight = 16;  // Belt moving right (light stripe)
+        public const byte Dirt = 17;            // Heavy powder that piles steeply
+        public const byte Ground = 18;          // Static diggable terrain
 
         public const int Count = 256;  // Maximum materials
 
@@ -79,6 +82,11 @@ namespace FallingSand
                    materialId == BeltRightLight;
         }
 
+        public static bool IsDiggable(MaterialDef mat)
+        {
+            return (mat.flags & MaterialFlags.Diggable) != 0;
+        }
+
         public static MaterialDef[] CreateDefaults()
         {
             var defs = new MaterialDef[Count];
@@ -87,7 +95,7 @@ namespace FallingSand
             defs[Air] = new MaterialDef
             {
                 density = 0,
-                friction = 0,
+                slideResistance = 0,
                 behaviour = BehaviourType.Static,
                 flags = MaterialFlags.None,
                 baseColour = new Color32(20, 20, 30, 255),  // Dark background
@@ -98,7 +106,7 @@ namespace FallingSand
             defs[Stone] = new MaterialDef
             {
                 density = 255,
-                friction = 255,
+                slideResistance = 0,
                 behaviour = BehaviourType.Static,
                 flags = MaterialFlags.ConductsHeat,
                 baseColour = new Color32(100, 100, 105, 255),
@@ -109,7 +117,7 @@ namespace FallingSand
             defs[Sand] = new MaterialDef
             {
                 density = 128,
-                friction = 20,
+                slideResistance = 0,  // No resistance - always tries to slide (preserves original behavior)
                 behaviour = BehaviourType.Powder,
                 flags = MaterialFlags.None,
                 baseColour = new Color32(194, 178, 128, 255),
@@ -120,7 +128,7 @@ namespace FallingSand
             defs[Water] = new MaterialDef
             {
                 density = 64,
-                friction = 5,
+                slideResistance = 5,
                 behaviour = BehaviourType.Liquid,
                 flags = MaterialFlags.ConductsHeat,
                 boilTemp = 100,
@@ -134,7 +142,7 @@ namespace FallingSand
             defs[Oil] = new MaterialDef
             {
                 density = 48,
-                friction = 15,
+                slideResistance = 15,
                 behaviour = BehaviourType.Liquid,
                 flags = MaterialFlags.Flammable,
                 ignitionTemp = 80,
@@ -148,7 +156,7 @@ namespace FallingSand
             defs[Steam] = new MaterialDef
             {
                 density = 4,
-                friction = 2,
+                slideResistance = 2,
                 behaviour = BehaviourType.Gas,
                 flags = MaterialFlags.ConductsHeat,
                 freezeTemp = 50,
@@ -161,7 +169,7 @@ namespace FallingSand
             defs[Belt] = new MaterialDef
             {
                 density = 255,
-                friction = 255,
+                slideResistance = 255,
                 behaviour = BehaviourType.Static,
                 flags = MaterialFlags.None,
                 baseColour = new Color32(60, 60, 70, 255),  // Dark gray
@@ -172,7 +180,7 @@ namespace FallingSand
             defs[BeltLeft] = new MaterialDef
             {
                 density = 255,
-                friction = 255,
+                slideResistance = 255,
                 behaviour = BehaviourType.Static,
                 flags = MaterialFlags.None,
                 baseColour = new Color32(50, 50, 60, 255),  // Darker gray
@@ -183,7 +191,7 @@ namespace FallingSand
             defs[BeltRight] = new MaterialDef
             {
                 density = 255,
-                friction = 255,
+                slideResistance = 255,
                 behaviour = BehaviourType.Static,
                 flags = MaterialFlags.None,
                 baseColour = new Color32(50, 50, 60, 255),  // Darker gray
@@ -194,7 +202,7 @@ namespace FallingSand
             defs[BeltLeftLight] = new MaterialDef
             {
                 density = 255,
-                friction = 255,
+                slideResistance = 255,
                 behaviour = BehaviourType.Static,
                 flags = MaterialFlags.None,
                 baseColour = new Color32(80, 80, 95, 255),  // Lighter gray
@@ -205,11 +213,32 @@ namespace FallingSand
             defs[BeltRightLight] = new MaterialDef
             {
                 density = 255,
-                friction = 255,
+                slideResistance = 255,
                 behaviour = BehaviourType.Static,
                 flags = MaterialFlags.None,
                 baseColour = new Color32(80, 80, 95, 255),  // Lighter gray
                 colourVariation = 0,
+            };
+
+            // Dirt - heavy powder that piles steeply
+            defs[Dirt] = new MaterialDef
+            {
+                density = 140,                              // Heavier than sand (128)
+                slideResistance = 200,                      // High resistance - piles steeply
+                behaviour = BehaviourType.Powder,
+                flags = MaterialFlags.None,
+                baseColour = new Color32(139, 90, 43, 255), // Brown
+                colourVariation = 12,
+            };
+
+            // Ground - static diggable terrain
+            defs[Ground] = new MaterialDef
+            {
+                density = 255,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.ConductsHeat | MaterialFlags.Diggable,
+                baseColour = new Color32(92, 64, 51, 255),  // Dark brown
+                colourVariation = 8,
             };
 
             return defs;

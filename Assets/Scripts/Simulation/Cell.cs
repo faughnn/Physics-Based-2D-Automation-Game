@@ -23,5 +23,6 @@ namespace FallingSand
         public const byte OnLift  = 1 << 1;  // Being moved by a lift
         public const byte Burning = 1 << 2;  // Currently on fire
         public const byte Wet     = 1 << 3;  // In contact with liquid
+        public const byte Settled = 1 << 4;  // Powder only: can't move, skip simulation until neighbor moves
     }
 }

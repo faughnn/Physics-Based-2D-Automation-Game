@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -25,6 +27,14 @@ namespace FallingSand
         private Keyboard keyboard;
         private float moveInput;
         private bool jumpPressed;
+
+        // Inventory
+        private HashSet<ToolType> inventory = new HashSet<ToolType>();
+        private ToolType equippedTool = ToolType.None;
+
+        // Events for UI/feedback
+        public event Action<ToolType> OnToolEquipped;
+        public event Action<ToolType> OnToolCollected;
 
         private void Awake()
         {
@@ -112,5 +122,59 @@ namespace FallingSand
         /// Returns true if the player is currently on the ground.
         /// </summary>
         public bool IsGrounded => isGrounded;
+
+        /// <summary>
+        /// Currently equipped (active) tool.
+        /// </summary>
+        public ToolType EquippedTool => equippedTool;
+
+        /// <summary>
+        /// All tools the player has collected.
+        /// </summary>
+        public IReadOnlyCollection<ToolType> Inventory => inventory;
+
+        /// <summary>
+        /// Check if player has a tool in inventory.
+        /// </summary>
+        public bool HasTool(ToolType tool)
+        {
+            return inventory.Contains(tool);
+        }
+
+        /// <summary>
+        /// Switch to a different tool from inventory.
+        /// </summary>
+        public bool EquipTool(ToolType tool)
+        {
+            if (tool == ToolType.None || inventory.Contains(tool))
+            {
+                equippedTool = tool;
+                OnToolEquipped?.Invoke(tool);
+                return true;
+            }
+            return false;  // Don't have this tool
+        }
+
+        private void OnTriggerEnter2D(Collider2D other)
+        {
+            var item = other.GetComponent<WorldItem>();
+            if (item != null)
+            {
+                CollectTool(item.ToolType);
+                item.Collect();
+            }
+        }
+
+        private void CollectTool(ToolType tool)
+        {
+            // Add to inventory
+            inventory.Add(tool);
+            OnToolCollected?.Invoke(tool);
+
+            // Silently equip the new tool (replaces current)
+            equippedTool = tool;
+            Debug.Log($"[PlayerController] Collected and equipped: {tool}");
+            OnToolEquipped?.Invoke(tool);
+        }
     }
 }

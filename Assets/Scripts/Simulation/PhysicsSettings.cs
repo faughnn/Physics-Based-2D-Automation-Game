@@ -20,8 +20,9 @@ namespace FallingSand
 
         /// <summary>
         /// Maximum fall velocity in cells per frame.
+        /// Must match BufferSize in SimulateChunksJob to prevent cross-region jumps.
         /// </summary>
-        public const int MaxVelocity = 16;
+        public const int MaxVelocity = 15;
 
         // Sleep thresholds for cluster physics
         /// <summary>

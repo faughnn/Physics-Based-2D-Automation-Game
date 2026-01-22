@@ -1,5 +1,7 @@
 # Item Pickup & Tool System
 
+**STATUS: COMPLETED** ✓
+
 ## Summary
 
 A simple system for world items that the player can collect by walking over them. Collected tools are automatically equipped and tracked on the player. This is the foundation for the shovel and future tools.
@@ -412,23 +414,23 @@ Configure in Unity:
 - [x] Player collider is NOT a trigger (solid for terrain collision)
 
 ### Item Spawning
-- [ ] Shovel spawns at specified position
-- [ ] Shovel is visible in the world (correct sprite size)
-- [ ] Shovel has BoxCollider2D set as trigger
+- [x] Shovel spawns at specified position
+- [x] Shovel is visible in the world (correct sprite size)
+- [x] Shovel has BoxCollider2D set as trigger
 
 ### Pickup Behavior
-- [ ] Walking over shovel triggers OnTriggerEnter2D
-- [ ] Shovel disappears after pickup
-- [ ] Pickup sound plays (procedural beep)
-- [ ] PlayerController.EquippedTool returns Shovel after pickup
-- [ ] PlayerController.HasTool(ToolType.Shovel) returns true
-- [ ] Console logs confirm pickup
+- [x] Walking over shovel triggers OnTriggerEnter2D
+- [x] Shovel disappears after pickup
+- [x] Pickup sound plays (procedural beep)
+- [x] PlayerController.EquippedTool returns Shovel after pickup
+- [x] PlayerController.HasTool(ToolType.Shovel) returns true
+- [x] Console logs confirm pickup
 
 ### Inventory
-- [ ] Collected tools are added to inventory
-- [ ] Picking up new tool silently replaces equipped tool
-- [ ] Previous tools remain in inventory
-- [ ] EquipTool() can switch between inventory tools
+- [x] Collected tools are added to inventory
+- [x] Picking up new tool silently replaces equipped tool
+- [x] Previous tools remain in inventory
+- [x] EquipTool() can switch between inventory tools
 
 ---
 
@@ -461,26 +463,26 @@ Following the project's architecture philosophy:
 - [x] Player has Rigidbody2D (dynamic, freeze rotation, continuous collision)
 - [x] Player has BoxCollider2D (16×32 world units)
 
-### Phase 1: Core Types
-1. Create `Assets/Scripts/Game/Items/ToolType.cs` enum
-2. Create `Assets/Scripts/Game/Items/WorldItem.cs` component
+### Phase 1: Core Types ✓
+1. ~~Create `Assets/Scripts/Game/Items/ToolType.cs` enum~~
+2. ~~Create `Assets/Scripts/Game/Items/WorldItem.cs` component~~
 
-### Phase 2: PlayerController Extensions
-3. Add `using System.Collections.Generic;` for HashSet
-4. Add inventory HashSet and equippedTool fields
-5. Add public properties: EquippedTool, Inventory, HasTool()
-6. Add OnToolEquipped and OnToolCollected events
-7. Add OnTriggerEnter2D pickup logic
+### Phase 2: PlayerController Extensions ✓
+3. ~~Add `using System.Collections.Generic;` for HashSet~~
+4. ~~Add inventory HashSet and equippedTool fields~~
+5. ~~Add public properties: EquippedTool, Inventory, HasTool()~~
+6. ~~Add OnToolEquipped and OnToolCollected events~~
+7. ~~Add OnTriggerEnter2D pickup logic~~
 
-### Phase 3: Item Spawning
-8. Add CreateShovelItem() method to GameController
-9. Add CreateShovelSprite() helper method
-10. Call CreateShovelItem() from Start() to spawn test shovel
+### Phase 3: Item Spawning ✓
+8. ~~Add CreateShovelItem() method to GameController~~
+9. ~~Add CreateShovelSprite() helper method~~
+10. ~~Call CreateShovelItem() from Start() to spawn test shovel~~
 
-### Phase 4: Testing
-11. Play test: walk over shovel, verify pickup
-12. Verify scale pop animation plays
-13. Verify pickup sound plays (procedural beep)
-14. Verify EquippedTool and HasTool() work
-15. Test picking up second tool (should silently replace equipped)
-16. Test EquipTool() to switch between inventory items
+### Phase 4: Testing ✓
+11. ~~Play test: walk over shovel, verify pickup~~
+12. ~~Verify scale pop animation plays~~
+13. ~~Verify pickup sound plays (procedural beep)~~
+14. ~~Verify EquippedTool and HasTool() work~~
+15. ~~Test picking up second tool (should silently replace equipped)~~
+16. ~~Test EquipTool() to switch between inventory items~~

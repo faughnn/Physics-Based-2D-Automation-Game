@@ -96,6 +96,7 @@ namespace FallingSand
             Debug.Log("[SandboxController] Cluster controls: 7=Circle, 8=Square, 9=L-Shape, [/]=Size");
             Debug.Log("[SandboxController] Belt controls: B=Toggle belt mode, Q/E=Rotate direction");
             Debug.Log("[SandboxController] Debug overlay: F3=Toggle, F4=Gizmos");
+            Debug.Log("[SandboxController] Materials: 1=Air, 2=Stone, 3=Sand, 4=Water, 5=Oil, 6=Steam, D=Dirt");
         }
 
         private void SetupCamera()
@@ -212,6 +213,7 @@ namespace FallingSand
                 if (keyboard.digit4Key.wasPressedThisFrame) currentMaterial = Materials.Water;
                 if (keyboard.digit5Key.wasPressedThisFrame) currentMaterial = Materials.Oil;
                 if (keyboard.digit6Key.wasPressedThisFrame) currentMaterial = Materials.Steam;
+                if (keyboard.dKey.wasPressedThisFrame) currentMaterial = Materials.Dirt;
             }
         }
 
