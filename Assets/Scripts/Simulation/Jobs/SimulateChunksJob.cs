@@ -92,10 +92,6 @@ namespace FallingSand
             int index = y * width + x;
             Cell cell = cells[index];
 
-            // Skip if already processed this frame
-            if (cell.frameUpdated == currentFrame)
-                return;
-
             // Skip air
             if (cell.materialId == Materials.Air)
                 return;
@@ -109,9 +105,6 @@ namespace FallingSand
             // Skip static materials
             if (mat.behaviour == BehaviourType.Static)
                 return;
-
-            // Mark as processed
-            cell.frameUpdated = currentFrame;
 
             // Simulate based on behaviour type
             switch (mat.behaviour)
