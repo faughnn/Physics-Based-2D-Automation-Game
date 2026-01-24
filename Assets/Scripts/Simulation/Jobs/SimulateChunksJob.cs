@@ -8,7 +8,8 @@ namespace FallingSand
 {
     /// <summary>
     /// Burst-compiled job for simulating cell physics in parallel.
-    /// Each job instance processes one chunk's extended region (core 32x32 + 16-cell buffer).
+    /// Each job instance processes one chunk's core 64x64 region.
+    /// Cells can move into adjacent chunks' buffer zones but are not simulated there.
     /// </summary>
     [BurstCompile]
     public struct SimulateChunksJob : IJobParallelFor
@@ -45,9 +46,7 @@ namespace FallingSand
         public int gravity;      // Gravity applied on gravity frames (usually 1)
         public int maxVelocity;  // Maximum velocity in cells/frame (usually 16)
 
-        // Buffer size around each chunk (15 to create 2-cell gap between same-group chunks)
-        private const int BufferSize = 15;
-        private const int ChunkSize = 32;
+        private const int ChunkSize = 64;
 
         public void Execute(int jobIndex)
         {
@@ -60,23 +59,20 @@ namespace FallingSand
             int chunkX = chunkIndex % chunksX;
             int chunkY = chunkIndex / chunksX;
 
-            // Core chunk bounds
+            // Core chunk bounds (clamped to world bounds)
             int coreMinX = chunkX * ChunkSize;
             int coreMinY = chunkY * ChunkSize;
-
-            // Extended bounds with buffer (clamped to world bounds)
-            int extMinX = math.max(0, coreMinX - BufferSize);
-            int extMaxX = math.min(width, coreMinX + ChunkSize + BufferSize);
-            int extMinY = math.max(0, coreMinY - BufferSize);
-            int extMaxY = math.min(height, coreMinY + ChunkSize + BufferSize);
+            int coreMaxX = math.min(width, coreMinX + ChunkSize);
+            int coreMaxY = math.min(height, coreMinY + ChunkSize);
 
             // Process bottom-to-top (critical for falling), alternating X direction
-            for (int y = extMaxY - 1; y >= extMinY; y--)
+            // Only simulate cells in core region - buffer zone is for cells to LAND in, not be simulated
+            for (int y = coreMaxY - 1; y >= coreMinY; y--)
             {
                 bool leftToRight = (y & 1) == 0;
 
-                int startX = leftToRight ? extMinX : extMaxX - 1;
-                int endX = leftToRight ? extMaxX : extMinX - 1;
+                int startX = leftToRight ? coreMinX : coreMaxX - 1;
+                int endX = leftToRight ? coreMaxX : coreMinX - 1;
                 int stepX = leftToRight ? 1 : -1;
 
                 for (int x = startX; x != endX; x += stepX)
@@ -449,12 +445,21 @@ namespace FallingSand
             // Mark both positions dirty
             MarkDirtyInternal(fromX, fromY);
             MarkDirtyInternal(toX, toY);
+
+            // Wake adjacent chunks when we vacate a boundary position
+            // This allows sand in the adjacent chunk to fall into the newly empty space
+            int localX = fromX & 63;
+            int localY = fromY & 63;
+            if (localX == 0 && fromX > 0)           MarkDirtyInternal(fromX - 1, fromY); // Wake left chunk
+            if (localX == 63 && fromX < width - 1)  MarkDirtyInternal(fromX + 1, fromY); // Wake right chunk
+            if (localY == 0 && fromY > 0)           MarkDirtyInternal(fromX, fromY - 1); // Wake chunk above
+            if (localY == 63 && fromY < height - 1) MarkDirtyInternal(fromX, fromY + 1); // Wake chunk below
         }
 
         private void MarkDirtyInternal(int x, int y)
         {
-            int chunkX = x >> 5; // x / 32
-            int chunkY = y >> 5; // y / 32
+            int chunkX = x >> 6; // x / 64
+            int chunkY = y >> 6; // y / 64
 
             if (chunkX < 0 || chunkX >= chunksX || chunkY < 0 || chunkY >= chunksY)
                 return;
@@ -464,8 +469,8 @@ namespace FallingSand
             ChunkState chunk = chunks[chunkIndex];
             chunk.flags |= ChunkFlags.IsDirty;
 
-            int localX = x & 31; // x % 32
-            int localY = y & 31; // y % 32
+            int localX = x & 63; // x % 64
+            int localY = y & 63; // y % 64
 
             // Update dirty bounds (race conditions on min/max are acceptable - worst case is extra work)
             if (localX < chunk.minX) chunk.minX = (ushort)localX;
