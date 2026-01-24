@@ -138,8 +138,8 @@ namespace FallingSand
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void MarkDirty(int x, int y)
         {
-            int chunkX = x >> 5; // x / 32
-            int chunkY = y >> 5; // y / 32
+            int chunkX = x >> 6; // x / 64
+            int chunkY = y >> 6; // y / 64
 
             if (chunkX < 0 || chunkX >= chunksX || chunkY < 0 || chunkY >= chunksY)
                 return;
@@ -149,8 +149,8 @@ namespace FallingSand
             ChunkState chunk = chunks[chunkIndex];
             chunk.flags |= ChunkFlags.IsDirty;
 
-            int localX = x & 31; // x % 32
-            int localY = y & 31; // y % 32
+            int localX = x & 63; // x % 64
+            int localY = y & 63; // y % 64
 
             // Update dirty bounds (race conditions on min/max are acceptable - worst case is extra work)
             if (localX < chunk.minX) chunk.minX = (ushort)localX;

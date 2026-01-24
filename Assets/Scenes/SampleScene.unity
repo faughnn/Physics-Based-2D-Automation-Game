@@ -266,7 +266,6 @@ GameObject:
   m_Component:
   - component: {fileID: 571177382}
   - component: {fileID: 571177381}
-  - component: {fileID: 571177380}
   m_Layer: 0
   m_Name: GameObject
   m_TagString: Untagged
@@ -274,19 +273,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &571177380
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 571177379}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 840d4cd2445220345af0f8c5f4296605, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::FallingSand.MetricsOverlay
-  sandbox: {fileID: 0}
 --- !u!114 &571177381
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -303,7 +289,6 @@ MonoBehaviour:
   worldHeight: 512
   brushSize: 5
   currentMaterial: 2
-  simulationSpeed: 1
   worldShader: {fileID: 0}
 --- !u!4 &571177382
 Transform:

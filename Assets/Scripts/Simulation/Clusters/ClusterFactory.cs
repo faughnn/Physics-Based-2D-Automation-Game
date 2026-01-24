@@ -35,14 +35,13 @@ namespace FallingSand
             rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
 
             // 3. Generate polygon outline from pixels using marching squares
-            // Marching squares outputs in cell units, need to scale to world units (1 cell = 2 world units)
+            // Marching squares outputs in cell units, need to scale to world units
             Vector2[] outline = MarchingSquares.GenerateOutline(pixels);
 
             // Scale polygon from cell units to world units
-            const float CellToWorldScale = 2f;
             for (int i = 0; i < outline.Length; i++)
             {
-                outline[i] *= CellToWorldScale;
+                outline[i] = CoordinateUtils.ScaleCellToWorld(outline[i]);
             }
 
             if (outline.Length < 3)
@@ -50,7 +49,7 @@ namespace FallingSand
                 // Fallback: create a simple box collider
                 Debug.LogWarning("[ClusterFactory] Marching squares produced insufficient vertices, using box collider");
                 BoxCollider2D box = go.AddComponent<BoxCollider2D>();
-                Vector2 size = CalculateBounds(pixels) * CellToWorldScale;
+                Vector2 size = CoordinateUtils.ScaleCellToWorld(CalculateBounds(pixels));
                 box.size = size;
             }
             else
@@ -109,10 +108,9 @@ namespace FallingSand
             float cellCenterY = startY + regionHeight / 2f;
 
             // Convert cell center to world coordinates
-            // worldX = cellX * 2 - worldWidth
-            // worldY = worldHeight - cellY * 2
-            float worldCenterX = cellCenterX * 2f - world.width;
-            float worldCenterY = world.height - cellCenterY * 2f;
+            Vector2 worldCenter = CoordinateUtils.CellToWorld(cellCenterX, cellCenterY, world.width, world.height);
+            float worldCenterX = worldCenter.x;
+            float worldCenterY = worldCenter.y;
 
             // Extract non-air cells from the region
             for (int y = startY; y < startY + regionHeight; y++)
@@ -159,8 +157,6 @@ namespace FallingSand
         {
             if (cluster.pixels.Count == 0) return;
 
-            const float CellToWorldScale = 2f;
-
             float totalMass = 0;
             float sumX = 0, sumY = 0;
             float momentOfInertia = 0;
@@ -178,14 +174,14 @@ namespace FallingSand
 
             // Center of mass in cell units, then scaled to world units
             Vector2 centerOfMassCell = new Vector2(sumX / totalMass, sumY / totalMass);
-            Vector2 centerOfMass = centerOfMassCell * CellToWorldScale;
+            Vector2 centerOfMass = CoordinateUtils.ScaleCellToWorld(centerOfMassCell);
 
             // Second pass: calculate moment of inertia around center of mass
-            // Use world units for distance (scaled by CellToWorldScale)
+            // Use world units for distance
             foreach (var pixel in cluster.pixels)
             {
-                float dx = (pixel.localX - centerOfMassCell.x) * CellToWorldScale;
-                float dy = (pixel.localY - centerOfMassCell.y) * CellToWorldScale;
+                float dx = CoordinateUtils.ScaleCellToWorld(pixel.localX - centerOfMassCell.x);
+                float dy = CoordinateUtils.ScaleCellToWorld(pixel.localY - centerOfMassCell.y);
                 float rSquared = dx * dx + dy * dy;
                 momentOfInertia += densityScale * rSquared;
             }

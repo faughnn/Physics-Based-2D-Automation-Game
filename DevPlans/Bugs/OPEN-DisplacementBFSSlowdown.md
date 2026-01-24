@@ -1,5 +1,10 @@
 # Bug: Displacement BFS Slowdown
 
+**Status:** OPEN (Verified 2026-01-23)
+**Note:** `DisplaceCell()` still calls `FindNearestEmptyCell()` with BFS radius 16 per overlapping pixel. No batch optimization implemented.
+
+---
+
 ## Summary
 Cluster sync becomes slow when dropping clusters into loose materials (sand, water). The displacement system does expensive BFS searches for each overlapping pixel.
 

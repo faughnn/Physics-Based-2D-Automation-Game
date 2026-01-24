@@ -1,5 +1,10 @@
 # Bug: Small Materials Can Get Inside Clusters
 
+**Status:** OPEN (Verified 2026-01-23)
+**Note:** `CanMoveTo()` in `SimulateChunksJob.cs:411-428` still does not check `target.ownerId != 0`. The cluster ownership check is missing.
+
+---
+
 ## Summary
 Small materials (sand, powder, etc.) can penetrate into cluster rigid bodies, getting inside their boundaries instead of colliding with their surfaces.
 

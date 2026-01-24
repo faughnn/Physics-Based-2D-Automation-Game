@@ -22,7 +22,7 @@ namespace FallingSand
         public readonly int chunksY;
 
         // Chunk size constant
-        public const int ChunkSize = 32;
+        public const int ChunkSize = 64;
 
         // Edge threshold for neighbor marking - mark neighbor chunks dirty when cells are this close to edge
         public const int EdgeThreshold = 2;
@@ -73,7 +73,6 @@ namespace FallingSand
                 {
                     materialId = Materials.Air,
                     flags = CellFlags.None,
-                    frameUpdated = 0,
                     velocityX = 0,
                     velocityY = 0,
                     temperature = 20,  // Room temperature
@@ -148,11 +147,11 @@ namespace FallingSand
             MarkDirty(cellX, cellY);
 
             // Check proximity to chunk boundaries and mark neighbors
-            int localX = cellX & 31;  // cellX % ChunkSize
-            int localY = cellY & 31;  // cellY % ChunkSize
+            int localX = cellX & 63;  // cellX % ChunkSize
+            int localY = cellY & 63;  // cellY % ChunkSize
 
-            int chunkX = cellX >> 5;  // cellX / ChunkSize
-            int chunkY = cellY >> 5;  // cellY / ChunkSize
+            int chunkX = cellX >> 6;  // cellX / ChunkSize
+            int chunkY = cellY >> 6;  // cellY / ChunkSize
 
             // Left neighbor
             if (localX < EdgeThreshold && chunkX > 0)
@@ -301,7 +300,7 @@ namespace FallingSand
                 if ((chunk.flags & ChunkFlags.HasStructure) == 0)
                 {
                     chunk.flags &= unchecked((byte)~ChunkFlags.IsDirty);
-                    chunk.minX = ChunkSize;  // 32 - inverted bounds = empty
+                    chunk.minX = ChunkSize;  // 64 - inverted bounds = empty
                     chunk.maxX = 0;
                     chunk.minY = ChunkSize;
                     chunk.maxY = 0;

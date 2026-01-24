@@ -158,9 +158,8 @@ namespace FallingSand
         /// </summary>
         public (float orthoSize, Vector3 position) GetRecommendedCameraSettings()
         {
-            // Each cell = 2×2 pixels
-            const int PixelsPerCell = 2;
-            int pixelHeight = worldHeight * PixelsPerCell;
+            // Each cell = PixelsPerCell×PixelsPerCell pixels
+            int pixelHeight = worldHeight * CoordinateUtils.PixelsPerCell;
 
             // Ortho size = half the height in world units
             float orthoSize = pixelHeight / 2f;

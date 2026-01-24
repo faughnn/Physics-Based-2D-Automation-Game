@@ -225,11 +225,9 @@ namespace FallingSand
             Vector3 mouseWorldPos = mainCamera.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0));
 
             // Convert world position to cell coordinates
-            // Quad spans from -worldWidth to +worldWidth (2x scale)
-            // So world X range is -worldWidth to +worldWidth
-            // Cell X = (worldX + worldWidth) / 2
-            int cellX = Mathf.FloorToInt((mouseWorldPos.x + simulation.WorldWidth) / 2f);
-            int cellY = Mathf.FloorToInt((simulation.WorldHeight - mouseWorldPos.y) / 2f); // Flip Y for Y=0 at top
+            Vector2Int cell = CoordinateUtils.WorldToCell(mouseWorldPos, simulation.WorldWidth, simulation.WorldHeight);
+            int cellX = cell.x;
+            int cellY = cell.y;
 
             paintLogCount++;
             if (paintLogCount <= 5 || paintLogCount % 30 == 0)
@@ -281,10 +279,7 @@ namespace FallingSand
             Vector2 mousePos = mouse.position.ReadValue();
             Vector3 mouseWorldPos = mainCamera.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0));
 
-            int cellX = Mathf.FloorToInt((mouseWorldPos.x + simulation.WorldWidth) / 2f);
-            int cellY = Mathf.FloorToInt((simulation.WorldHeight - mouseWorldPos.y) / 2f);
-
-            return new Vector2Int(cellX, cellY);
+            return CoordinateUtils.WorldToCell(mouseWorldPos, simulation.WorldWidth, simulation.WorldHeight);
         }
 
         private void PlaceBeltAtMouse()

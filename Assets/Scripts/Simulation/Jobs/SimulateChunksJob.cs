@@ -9,7 +9,7 @@ namespace FallingSand
     /// <summary>
     /// Burst-compiled job for simulating cell physics in parallel.
     /// Each job instance processes one chunk's core 64x64 region.
-    /// Cells can move into adjacent chunks' buffer zones but are not simulated there.
+    /// Cells can read/write within a 128x128 extended region (32px buffer around core).
     /// </summary>
     [BurstCompile]
     public struct SimulateChunksJob : IJobParallelFor
@@ -38,15 +38,23 @@ namespace FallingSand
         // Frame counter for double-processing prevention
         public ushort currentFrame;
 
-        // Gravity interval: apply gravity when frame % interval == 0
-        // Higher interval = slower effective gravity (1/interval cells/frame²)
-        public int gravityInterval;
+        // Fractional gravity: added to accumulator each frame; overflow triggers velocity increment
+        // Value of 17 gives ~15 frames between increments (256/17 ≈ 15)
+        public byte fractionalGravity;
 
         // Physics constants from PhysicsSettings (passed in because Burst can't access static fields)
-        public int gravity;      // Gravity applied on gravity frames (usually 1)
+        public int gravity;      // Gravity applied when accumulator overflows (usually 1)
         public int maxVelocity;  // Maximum velocity in cells/frame (usually 16)
 
         private const int ChunkSize = 64;
+
+        // Extended region bounds for current chunk (128x128 area with 32px buffer)
+        // These are set per-chunk in SimulateChunk() and are thread-safe because
+        // each parallel Execute() gets its own copy of the job struct
+        private int extendedMinX;
+        private int extendedMinY;
+        private int extendedMaxX;
+        private int extendedMaxY;
 
         public void Execute(int jobIndex)
         {
@@ -64,6 +72,13 @@ namespace FallingSand
             int coreMinY = chunkY * ChunkSize;
             int coreMaxX = math.min(width, coreMinX + ChunkSize);
             int coreMaxY = math.min(height, coreMinY + ChunkSize);
+
+            // Extended region bounds (128x128 with 32px buffer around core)
+            // Cells can only read/write within this region
+            extendedMinX = math.max(0, coreMinX - 32);
+            extendedMinY = math.max(0, coreMinY - 32);
+            extendedMaxX = math.min(width, coreMaxX + 32);
+            extendedMaxY = math.min(height, coreMaxY + 32);
 
             // Process bottom-to-top (critical for falling), alternating X direction
             // Only simulate cells in core region - buffer zone is for cells to LAND in, not be simulated
@@ -119,8 +134,11 @@ namespace FallingSand
 
         private void SimulatePowder(int x, int y, Cell cell, MaterialDef mat)
         {
-            // Apply gravity only on gravity frames (every gravityInterval frames)
-            if (currentFrame % gravityInterval == 0)
+            // Apply gravity using fractional accumulation
+            // When accumulator overflows 255, increment velocity
+            byte oldFracY = cell.velocityFracY;
+            cell.velocityFracY += fractionalGravity;
+            if (cell.velocityFracY < oldFracY) // Overflow detected
             {
                 cell.velocityY = (sbyte)math.min(cell.velocityY + gravity, maxVelocity);
             }
@@ -189,8 +207,11 @@ namespace FallingSand
             // Track if we were free-falling before this frame
             bool wasFreeFalling = cell.velocityY > 2;
 
-            // Apply gravity only on gravity frames (every gravityInterval frames)
-            if (currentFrame % gravityInterval == 0)
+            // Apply gravity using fractional accumulation
+            // When accumulator overflows 255, increment velocity
+            byte oldFracY = cell.velocityFracY;
+            cell.velocityFracY += fractionalGravity;
+            if (cell.velocityFracY < oldFracY) // Overflow detected
             {
                 cell.velocityY = (sbyte)math.min(cell.velocityY + gravity, maxVelocity);
             }
@@ -295,8 +316,11 @@ namespace FallingSand
 
         private void SimulateGas(int x, int y, Cell cell, MaterialDef mat)
         {
-            // Gases rise - negative gravity (only on gravity frames)
-            if (currentFrame % gravityInterval == 0)
+            // Gases rise - negative gravity using fractional accumulation
+            // When accumulator overflows 255, decrement velocity (rising)
+            byte oldFracY = cell.velocityFracY;
+            cell.velocityFracY += fractionalGravity;
+            if (cell.velocityFracY < oldFracY) // Overflow detected
             {
                 cell.velocityY = (sbyte)math.max(cell.velocityY - gravity, -maxVelocity);
             }
@@ -408,9 +432,17 @@ namespace FallingSand
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsInExtendedRegion(int x, int y)
+        {
+            return x >= extendedMinX && x < extendedMaxX &&
+                   y >= extendedMinY && y < extendedMaxY;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool CanMoveTo(int x, int y, byte myDensity)
         {
-            if (!IsInBounds(x, y))
+            // Must be within 128x128 extended region (32px buffer around home chunk)
+            if (!IsInExtendedRegion(x, y))
                 return false;
 
             Cell target = cells[y * width + x];
@@ -432,11 +464,7 @@ namespace FallingSand
             int fromIndex = fromY * width + fromX;
             int toIndex = toY * width + toX;
 
-            // Get target cell (usually air, but could be lighter material for displacement)
             Cell targetCell = cells[toIndex];
-
-            // Mark target as processed so it doesn't get simulated again this frame
-            targetCell.frameUpdated = currentFrame;
 
             // Swap - target goes to source, source goes to target
             cells[fromIndex] = targetCell;

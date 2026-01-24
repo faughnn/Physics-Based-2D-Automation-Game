@@ -103,7 +103,7 @@ namespace FallingSand
                 chunksX = world.chunksX,
                 chunksY = world.chunksY,
                 currentFrame = world.currentFrame,
-                gravityInterval = PhysicsSettings.GravityInterval,
+                fractionalGravity = PhysicsSettings.FractionalGravity,
                 gravity = PhysicsSettings.CellGravityAccel,
                 maxVelocity = PhysicsSettings.MaxVelocity,
             };

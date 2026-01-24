@@ -1,5 +1,10 @@
 # Bug: NoiseVariation Toggle Appears Inverted
 
+**Status:** OPEN (Verified 2026-01-23)
+**Note:** The else branch on lines 115-119 of `WorldRender.shader` still applies noise (`colour.rgb *= 0.95 + noise * 0.1;`) when `_NoiseEnabled` is disabled.
+
+---
+
 ## Summary
 The NoiseVariation effect toggle doesn't disable noise - it just switches between two noise modes. Toggling "ON" can appear to reduce noise, making the toggle feel inverted.
 

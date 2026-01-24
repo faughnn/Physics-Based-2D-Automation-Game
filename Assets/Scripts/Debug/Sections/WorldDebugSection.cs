@@ -87,11 +87,12 @@ namespace FallingSand.Debugging
                 }
 
                 // Convert cell coords to world coords
-                // Cells are displayed as 2x2 pixels, quad is centered at origin
-                float x1 = minCellX * 2f - world.width;
-                float x2 = maxCellX * 2f - world.width;
-                float y1 = world.height - maxCellY * 2f;  // Flip Y (cell Y=0 is top)
-                float y2 = world.height - minCellY * 2f;
+                Vector2 bottomLeft = CoordinateUtils.CellToWorld(minCellX, maxCellY, world.width, world.height);
+                Vector2 topRight = CoordinateUtils.CellToWorld(maxCellX, minCellY, world.width, world.height);
+                float x1 = bottomLeft.x;
+                float x2 = topRight.x;
+                float y1 = bottomLeft.y;
+                float y2 = topRight.y;
 
                 // Draw rectangle using Gizmos
                 Gizmos.color = DirtyRectColor;

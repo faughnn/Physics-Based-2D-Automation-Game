@@ -68,17 +68,14 @@ namespace FallingSand
             // World Y: ranges from +worldHeight to -worldHeight (Y flipped)
             Vector2 pos = Position;
 
-            // Convert world position to cell position
-            // cellX = (worldX + worldWidth) / 2
-            // cellY = (worldHeight - worldY) / 2
-            float cellCenterX = (pos.x + worldWidth) / 2f;
-            float cellCenterY = (worldHeight - pos.y) / 2f;
+            // Convert world position to cell position using RoundToInt for pixel placement
+            Vector2 cellCenter = CoordinateUtils.WorldToCellFloat(pos, worldWidth, worldHeight);
 
             // Add rotated X offset directly, but SUBTRACT rotated Y offset
             // because cell grid Y+ = down, while Unity Y+ = up
             return new Vector2Int(
-                Mathf.RoundToInt(cellCenterX + rotatedX),
-                Mathf.RoundToInt(cellCenterY - rotatedY)
+                Mathf.RoundToInt(cellCenter.x + rotatedX),
+                Mathf.RoundToInt(cellCenter.y - rotatedY)
             );
         }
 

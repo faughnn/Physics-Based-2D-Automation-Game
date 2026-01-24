@@ -342,7 +342,6 @@ namespace FallingSand
                 {
                     materialId = pixel.materialId,
                     ownerId = cluster.clusterId,
-                    frameUpdated = world.currentFrame,
                     velocityX = 0,
                     velocityY = 0,
                     temperature = 20,
@@ -382,7 +381,6 @@ namespace FallingSand
                     -clusterVelocity.y * scaleFactor,  // Negate Y for coordinate flip
                     -PhysicsSettings.MaxVelocity, PhysicsSettings.MaxVelocity);
                 cell.ownerId = 0;
-                cell.frameUpdated = world.currentFrame;
 
                 world.cells[newIndex] = cell;
                 world.MarkDirty(newPos.x, newPos.y);

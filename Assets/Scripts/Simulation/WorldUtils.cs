@@ -8,26 +8,26 @@ namespace FallingSand
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CellIndex(int x, int y, int width) => y * width + x;
 
-        // Cell to chunk (using bit shift for speed, assumes ChunkSize = 32)
+        // Cell to chunk (using bit shift for speed, assumes ChunkSize = 64)
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int CellToChunkX(int cx) => cx >> 5;  // cx / 32
+        public static int CellToChunkX(int cx) => cx >> 6;  // cx / 64
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int CellToChunkY(int cy) => cy >> 5;  // cy / 32
+        public static int CellToChunkY(int cy) => cy >> 6;  // cy / 64
 
         // Chunk to cell (top-left corner)
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int ChunkToCellX(int chunkX) => chunkX << 5;  // chunkX * 32
+        public static int ChunkToCellX(int chunkX) => chunkX << 6;  // chunkX * 64
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int ChunkToCellY(int chunkY) => chunkY << 5;  // chunkY * 32
+        public static int ChunkToCellY(int chunkY) => chunkY << 6;  // chunkY * 64
 
         // Local position within chunk
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int CellToLocalX(int cx) => cx & 31;  // cx % 32
+        public static int CellToLocalX(int cx) => cx & 63;  // cx % 64
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int CellToLocalY(int cy) => cy & 31;  // cy % 32
+        public static int CellToLocalY(int cy) => cy & 63;  // cy % 64
 
         // Chunk index in flat array
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

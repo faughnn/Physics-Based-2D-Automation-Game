@@ -1,5 +1,10 @@
 # Bug: Tiny Gaps Appear in Clusters During Rotation
 
+**Status:** OPEN (Verified 2026-01-23)
+**Note:** `LocalToWorldCell()` in `ClusterData.cs:56-82` still uses `Mathf.RoundToInt` independently for each pixel. No gap-filling or conservative rasterization has been implemented.
+
+---
+
 ## Summary
 When clusters rotate, tiny gaps appear in their interior due to discrete rounding during pixel coordinate transformation. Each pixel is independently transformed and rounded to integer grid coordinates, which can cause adjacent pixels to skip cells.
 

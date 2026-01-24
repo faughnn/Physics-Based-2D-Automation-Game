@@ -135,10 +135,9 @@ namespace FallingSand
             Mesh mesh = new Mesh();
             mesh.name = "CellWorldQuad";
 
-            // Each cell renders as 2×2 pixels
-            const int PixelsPerCell = 2;
-            int pixelWidth = world.width * PixelsPerCell;   // 1024 * 2 = 2048 pixels
-            int pixelHeight = world.height * PixelsPerCell; // 512 * 2 = 1024 pixels
+            // Each cell renders as PixelsPerCell×PixelsPerCell pixels
+            int pixelWidth = world.width * CoordinateUtils.PixelsPerCell;   // 1024 * 2 = 2048 pixels
+            int pixelHeight = world.height * CoordinateUtils.PixelsPerCell; // 512 * 2 = 1024 pixels
             float halfWidth = pixelWidth / 2f;   // 1024
             float halfHeight = pixelHeight / 2f; // 512
 

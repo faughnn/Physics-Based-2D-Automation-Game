@@ -1,5 +1,26 @@
 # Bug: Rigid Body + Belt Frame Stutter
 
+**Status:** FIXED (Verified 2026-01-23)
+
+---
+
+## Resolution
+
+The bug has been fixed with the following changes:
+
+1. **All Debug.Log calls removed** - The unthrottled Debug.Log at line 699 and per-pixel Debug.Log calls at lines 725, 734, 743 no longer exist. The file contains zero Debug.Log statements in the belt-cluster code.
+
+2. **Bounding box pre-check added** - Lines 714-721 in `BeltManager.cs` now include two quick rejection tests:
+   - Check if cluster center Y is within `localRadius` of belt surface Y
+   - Check if cluster center X is within `localRadius + beltHalfSpan` of belt center X
+   - These skip pixel iteration when clusters are clearly not near the belt
+
+**Remaining minor optimization opportunities** (not blocking):
+- Trig caching not implemented - `LocalToWorldCell()` still recalculates cos/sin for each pixel
+- No spatial partitioning - Still O(clusters * belts) for outer loops
+
+---
+
 ## Summary
 Spawning rigid bodies causes periodic frame stutters (every ~0.5 seconds), but ONLY when belts are also placed in the world. Simulation time spikes momentarily high during these stutters.
 

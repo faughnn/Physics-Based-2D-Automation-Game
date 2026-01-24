@@ -7,12 +7,13 @@ namespace FallingSand
     {
         public byte materialId;      // Index into material definitions
         public byte flags;           // State flags (see CellFlags)
-        public ushort frameUpdated;  // Prevents double-processing per frame
         public sbyte velocityX;      // Horizontal velocity (-16 to +16 cells)
         public sbyte velocityY;      // Vertical velocity (-16 to +16 cells)
         public byte temperature;     // 0-255 for heat simulation
         public byte structureId;     // If attached to a structure/building, which one (0 = none)
         public ushort ownerId;       // If owned by a cluster (rigid body), which one (0 = free cell)
+        public byte velocityFracX;   // Fractional accumulator for horizontal forces
+        public byte velocityFracY;   // Fractional accumulator for gravity
     }
     // Size: 10 bytes per cell
 

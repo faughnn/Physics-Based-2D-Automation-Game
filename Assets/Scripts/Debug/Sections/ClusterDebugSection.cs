@@ -209,9 +209,7 @@ namespace FallingSand.Debugging
         private Vector2 CellToWorld(Vector2 cellPos)
         {
             if (world == null) return Vector2.zero;
-            float worldX = cellPos.x * 2f - world.width;
-            float worldY = world.height - cellPos.y * 2f;
-            return new Vector2(worldX, worldY);
+            return CoordinateUtils.CellToWorld(cellPos.x, cellPos.y, world.width, world.height);
         }
     }
 }

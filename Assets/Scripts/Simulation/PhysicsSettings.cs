@@ -7,10 +7,12 @@ namespace FallingSand
     public static class PhysicsSettings
     {
         /// <summary>
-        /// Gravity interval - how many frames between gravity applications for cells.
-        /// This gives effective gravity of 1/15 cells/frame², matching tested behavior.
+        /// Fractional gravity increment per frame. When the accumulator overflows 255,
+        /// velocity increases by 1. Value of 17 gives ~15 frames between increments
+        /// (256/17 ≈ 15), matching the old GravityInterval behavior but with smooth
+        /// per-cell distribution instead of synchronized jumps.
         /// </summary>
-        public const int GravityInterval = 15;
+        public const byte FractionalGravity = 17;
 
         /// <summary>
         /// Integer gravity applied on gravity frames (for cell integer math).
@@ -19,10 +21,11 @@ namespace FallingSand
         public const int CellGravityAccel = 1;
 
         /// <summary>
-        /// Maximum fall velocity in cells per frame.
-        /// Must match BufferSize in SimulateChunksJob to prevent cross-region jumps.
+        /// Maximum velocity in cells per frame (any direction).
+        /// Must be less than half the gap between same-group chunk cores (64 cells)
+        /// to prevent race conditions during parallel chunk processing.
         /// </summary>
-        public const int MaxVelocity = 15;
+        public const int MaxVelocity = 16;
 
         // Sleep thresholds for cluster physics
         /// <summary>
@@ -45,19 +48,20 @@ namespace FallingSand
         /// Unity uses world units per second², Y+ = up.
         /// Cell system uses cells per frame², Y+ = down.
         /// </summary>
-        /// <param name="cellToWorldScale">World units per cell (default 2)</param>
+        /// <param name="cellToWorldScale">World units per cell (default CoordinateUtils.CellToWorldScale)</param>
         /// <param name="targetFps">Target frame rate (default 60)</param>
         /// <returns>Gravity in world units/sec² (negative = down)</returns>
-        public static float GetUnityGravity(float cellToWorldScale = 2f, float targetFps = 60f)
+        public static float GetUnityGravity(float cellToWorldScale = CoordinateUtils.CellToWorldScale, float targetFps = 60f)
         {
-            // Effective gravity = CellGravityAccel / GravityInterval = 1/15 cells/frame²
-            float effectiveCellGravity = (float)CellGravityAccel / GravityInterval;
+            // Effective gravity = FractionalGravity / 256 cells/frame²
+            // (each frame adds FractionalGravity to accumulator; overflow at 256 increments velocity)
+            float effectiveCellGravity = FractionalGravity / 256f;
             // Convert to world units/sec²:
             // - Multiply by cellToWorldScale to get world units
             // - Multiply by fps² to convert from per-frame to per-second
             // - Negate because Unity Y+ is up, cell Y+ is down
             return -effectiveCellGravity * cellToWorldScale * targetFps * targetFps;
-            // Result: -(1/15) * 2 * 60 * 60 = -480 units/sec²
+            // Result: -(17/256) * 2 * 60 * 60 ≈ -478 units/sec² (similar to old -480)
         }
     }
 }

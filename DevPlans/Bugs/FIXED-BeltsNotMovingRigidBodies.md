@@ -1,5 +1,29 @@
 # Bug: Belts Not Moving Rigid Bodies
 
+**Status:** FIXED (Verified 2026-01-23)
+
+---
+
+## Resolution
+
+The bug has been fixed with a two-part solution:
+
+1. **BeltManager now directly sets velocity** (`BeltManager.cs:688-690`):
+   - Instead of applying a weak force, belts now directly set the cluster's X velocity to `BeltCarrySpeed`
+   - Setting velocity auto-wakes sleeping rigidbodies
+   - Sets `cluster.isOnBelt = foundBelt` flag for each cluster (line 696)
+
+2. **ClusterManager respects isOnBelt flag** (`ClusterManager.cs:220-225`):
+   - Before forcing a cluster to sleep, ClusterManager now checks `cluster.isOnBelt`
+   - If the cluster is on a belt, it resets `lowVelocityFrames` to 0 and skips sleep
+   - This prevents clusters from sleeping while they should be carried by belts
+
+3. **ClusterData has isOnBelt field** (`ClusterData.cs:32`):
+   - Added `public bool isOnBelt` field for cross-system communication
+   - Set by BeltManager before physics, used by ClusterManager after physics
+
+---
+
 ## Summary
 Belts are supposed to apply force to move rigid body clusters along their surface, but clusters that land on belts remain stationary instead of being transported.
 

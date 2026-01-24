@@ -707,8 +707,9 @@ namespace FallingSand
             int beltMaxX = belt.minX + belt.Span;
 
             // Convert cluster position to cell coordinates
-            float cellCenterX = (cluster.Position.x + worldWidth) / 2f;
-            float cellCenterY = (worldHeight - cluster.Position.y) / 2f;
+            Vector2 cellCenter = CoordinateUtils.WorldToCellFloat(cluster.Position, worldWidth, worldHeight);
+            float cellCenterX = cellCenter.x;
+            float cellCenterY = cellCenter.y;
 
             // Quick rejection: cluster too far from belt surface Y
             if (Mathf.Abs(cellCenterY - surfaceY) > cluster.localRadius)

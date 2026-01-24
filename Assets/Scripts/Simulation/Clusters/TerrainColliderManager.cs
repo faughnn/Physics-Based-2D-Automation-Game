@@ -28,9 +28,6 @@ namespace FallingSand
         // Frame counter for periodic updates
         private int frameCount = 0;
 
-        // Scale: 1 cell = 2 world units
-        private const float CellToWorldScale = 2f;
-
         /// <summary>
         /// Initialize with reference to the cell world.
         /// </summary>
@@ -58,9 +55,9 @@ namespace FallingSand
             GameObject boundaryObj = new GameObject("WorldBoundaries");
             boundaryObj.transform.SetParent(collidersParent.transform);
 
-            // World spans from -width to +width in X, -height to +height in Y (due to 2x scale)
-            float halfWidth = world.width;   // width * CellToWorldScale / 2 = width
-            float halfHeight = world.height; // height * CellToWorldScale / 2 = height
+            // World spans from -width to +width in X, -height to +height in Y (due to CellToWorldScale)
+            float halfWidth = world.width;   // width * CoordinateUtils.CellToWorldScale / 2 = width
+            float halfHeight = world.height; // height * CoordinateUtils.CellToWorldScale / 2 = height
 
             // Create edge collider for boundaries
             EdgeCollider2D edge = boundaryObj.AddComponent<EdgeCollider2D>();
@@ -197,10 +194,7 @@ namespace FallingSand
                 float cellX = outline[i].x + chunkCellX + CellWorld.ChunkSize / 2f;
                 float cellY = outline[i].y + chunkCellY + CellWorld.ChunkSize / 2f;
 
-                float worldX = cellX * CellToWorldScale - world.width;
-                float worldY = world.height - cellY * CellToWorldScale;
-
-                outline[i] = new Vector2(worldX, worldY);
+                outline[i] = CoordinateUtils.CellToWorld(cellX, cellY, world.width, world.height);
             }
 
             // Get or create collider

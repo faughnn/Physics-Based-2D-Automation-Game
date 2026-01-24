@@ -83,11 +83,11 @@ Group assignment: `group = (chunkX & 1) + ((chunkY & 1) << 1)`
 - Group D (3): odd X, odd Y
 
 **Why 4 Groups?**
-- Each chunk (32x32 cells) processes an extended region with a 15-cell buffer
-- Same-group chunks are 2 chunks apart (64 cells)
-- Their extended regions (32 + 15 + 15 = 62 cells wide) leave a 2-cell gap
-- This gap ensures same-group chunks can READ but not WRITE adjacent cells
-- Cell velocity is capped at 15 cells/frame, matching the buffer size
+- Each chunk (64x64 cells) processes an extended region with a 32-cell buffer
+- Same-group chunks are 2 chunks apart (128 cells)
+- Their extended regions (64 + 32 + 32 = 128 cells wide) leave no overlap
+- This ensures same-group chunks can READ but not WRITE adjacent cells
+- Cell velocity is capped at 16 cells/frame (plus max spread of 11), safely within the 64-cell half-gap
 
 **Execution:**
 1. Groups A, B, C, D are scheduled sequentially (with dependencies)
