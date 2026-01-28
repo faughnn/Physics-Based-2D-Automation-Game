@@ -32,6 +32,14 @@ namespace FallingSand
         private bool beltDragging = false;
         private int beltDragY = -1;  // Snapped Y position locked during drag
 
+        // Lift placement mode
+        private bool liftMode = false;
+        private bool liftDragging = false;
+        private int liftDragX = -1;  // Snapped X position locked during drag (vertical line)
+
+        // Wall placement mode
+        private bool wallMode = false;
+
         // Input references
         private Mouse mouse;
         private Keyboard keyboard;
@@ -43,15 +51,15 @@ namespace FallingSand
         public bool BeltMode => beltMode;
         public sbyte BeltDirection => beltDirection;
         public BeltManager BeltManager => simulation?.BeltManager;
+        public bool LiftMode => liftMode;
+        public LiftManager LiftManager => simulation?.LiftManager;
+        public bool WallMode => wallMode;
 
         private void Start()
         {
-            Debug.Log("[SandboxController] Start() called");
-
             // Get input devices
             mouse = Mouse.current;
             keyboard = Keyboard.current;
-            Debug.Log($"[SandboxController] Mouse: {(mouse != null ? "found" : "NULL")}, Keyboard: {(keyboard != null ? "found" : "NULL")}");
 
             // Find or create SimulationManager
             simulation = SimulationManager.Instance;
@@ -60,7 +68,6 @@ namespace FallingSand
                 simulation = SimulationManager.Create(worldWidth, worldHeight);
                 simulation.Initialize();
             }
-            Debug.Log("[SandboxController] SimulationManager ready");
 
             // Create cluster test spawner (handles 7/8/9 key spawning)
             // Attach to ClusterManager's GameObject
@@ -70,9 +77,7 @@ namespace FallingSand
             clusterTestSpawner.world = simulation.World;
 
             // Setup camera
-            Debug.Log("[SandboxController] Setting up camera...");
             SetupCamera();
-            Debug.Log($"[SandboxController] Camera setup complete. Ortho size: {mainCamera.orthographicSize}, Pos: {mainCamera.transform.position}");
 
             // Give test spawner camera reference
             clusterTestSpawner.mainCamera = mainCamera;
@@ -86,17 +91,11 @@ namespace FallingSand
             debugOverlay.RegisterSection(new WorldDebugSection(simulation.World));
             debugOverlay.RegisterSection(new ClusterDebugSection(simulation.ClusterManager, simulation.World));
             debugOverlay.RegisterSection(new InputDebugSection(this));
+            debugOverlay.RegisterSection(new LiftDebugSection(simulation.LiftManager, simulation.WorldWidth, simulation.WorldHeight));
 
             // Create settings menu (ESC to toggle)
             GameObject settingsObj = new GameObject("SettingsMenu");
             settingsObj.AddComponent<SettingsMenu>();
-            Debug.Log("[SandboxController] SettingsMenu created");
-
-            Debug.Log($"[SandboxController] === READY === World: {simulation.WorldWidth}x{simulation.WorldHeight} cells");
-            Debug.Log("[SandboxController] Cluster controls: 7=Circle, 8=Square, 9=L-Shape, [/]=Size");
-            Debug.Log("[SandboxController] Belt controls: B=Toggle belt mode, Q/E=Rotate direction");
-            Debug.Log("[SandboxController] Debug overlay: F3=Toggle, F4=Gizmos");
-            Debug.Log("[SandboxController] Materials: 1=Air, 2=Stone, 3=Sand, 4=Water, 5=Oil, 6=Steam, D=Dirt");
         }
 
         private void SetupCamera()
@@ -157,6 +156,45 @@ namespace FallingSand
                     RemoveBeltAtMouse();
                 }
             }
+            else if (liftMode)
+            {
+                // Lift placement mode with vertical line snapping
+                if (mouse.leftButton.wasPressedThisFrame)
+                {
+                    // Start of drag - lock the X position
+                    Vector2Int cell = GetCellAtMouse();
+                    liftDragX = LiftManager.SnapToGrid(cell.x);
+                    liftDragging = true;
+                    PlaceLiftAtMouse();
+                }
+                else if (mouse.leftButton.isPressed && liftDragging)
+                {
+                    // Continue drag - use locked X
+                    PlaceLiftAtMouse();
+                }
+                else if (mouse.leftButton.wasReleasedThisFrame)
+                {
+                    // End of drag
+                    liftDragging = false;
+                    liftDragX = -1;
+                }
+                else if (mouse.rightButton.isPressed)
+                {
+                    RemoveLiftAtMouse();
+                }
+            }
+            else if (wallMode)
+            {
+                // Wall placement mode - 8x8 grid-aligned blocks
+                if (mouse.leftButton.isPressed)
+                {
+                    PlaceWallAtMouse();
+                }
+                else if (mouse.rightButton.isPressed)
+                {
+                    RemoveWallAtMouse();
+                }
+            }
             else
             {
                 // Normal paint mode
@@ -171,7 +209,7 @@ namespace FallingSand
             }
 
             // Adjust brush size with scroll wheel (only in paint mode)
-            if (!beltMode)
+            if (!beltMode && !liftMode && !wallMode)
             {
                 float scroll = mouse.scroll.ReadValue().y;
                 if (scroll != 0)
@@ -185,27 +223,42 @@ namespace FallingSand
         {
             if (keyboard == null) return;
 
-            // B key toggles belt mode
+            // B key toggles belt mode (turns off lift/wall mode)
             if (keyboard.bKey.wasPressedThisFrame)
             {
                 beltMode = !beltMode;
-                Debug.Log($"[SandboxController] Belt mode: {(beltMode ? "ON" : "OFF")} (direction: {(beltDirection > 0 ? "RIGHT" : "LEFT")})");
+                if (beltMode) { liftMode = false; wallMode = false; }
             }
 
-            // Q/E to rotate belt direction
-            if (keyboard.qKey.wasPressedThisFrame)
+            // L key toggles lift mode (turns off belt/wall mode)
+            if (keyboard.lKey.wasPressedThisFrame)
             {
-                beltDirection = -1;
-                Debug.Log("[SandboxController] Belt direction: LEFT");
-            }
-            if (keyboard.eKey.wasPressedThisFrame)
-            {
-                beltDirection = 1;
-                Debug.Log("[SandboxController] Belt direction: RIGHT");
+                liftMode = !liftMode;
+                if (liftMode) { beltMode = false; wallMode = false; }
             }
 
-            // Number keys to select materials (only when not in belt mode)
-            if (!beltMode)
+            // W key toggles wall mode (turns off belt/lift mode)
+            if (keyboard.wKey.wasPressedThisFrame)
+            {
+                wallMode = !wallMode;
+                if (wallMode) { beltMode = false; liftMode = false; }
+            }
+
+            // Q/E to rotate belt direction (belt mode only)
+            if (beltMode)
+            {
+                if (keyboard.qKey.wasPressedThisFrame)
+                {
+                    beltDirection = -1;
+                }
+                if (keyboard.eKey.wasPressedThisFrame)
+                {
+                    beltDirection = 1;
+                }
+            }
+
+            // Number keys to select materials (only when not in belt, lift, or wall mode)
+            if (!beltMode && !liftMode && !wallMode)
             {
                 if (keyboard.digit1Key.wasPressedThisFrame) currentMaterial = Materials.Air;
                 if (keyboard.digit2Key.wasPressedThisFrame) currentMaterial = Materials.Stone;
@@ -217,8 +270,6 @@ namespace FallingSand
             }
         }
 
-        private int paintLogCount = 0;
-
         private void PaintAtMouse(byte materialId)
         {
             Vector2 mousePos = mouse.position.ReadValue();
@@ -229,15 +280,7 @@ namespace FallingSand
             int cellX = cell.x;
             int cellY = cell.y;
 
-            paintLogCount++;
-            if (paintLogCount <= 5 || paintLogCount % 30 == 0)
-            {
-                Debug.Log($"[SandboxController] Paint #{paintLogCount}: screenPos={mousePos}, worldPos={mouseWorldPos}, cellPos=({cellX},{cellY}), material={materialId}, brush={brushSize}");
-            }
-
             // Paint a circular brush
-            int cellsPainted = 0;
-
             // Check if we're painting/erasing static materials (need to update terrain colliders)
             bool affectsColliders = materialId == Materials.Stone || materialId == Materials.Air;
             var world = simulation.World;
@@ -263,14 +306,8 @@ namespace FallingSand
                         }
 
                         world.SetCell(px, py, materialId);
-                        cellsPainted++;
                     }
                 }
-            }
-
-            if (paintLogCount <= 5)
-            {
-                Debug.Log($"[SandboxController] Painted {cellsPainted} cells");
             }
         }
 
@@ -325,6 +362,69 @@ namespace FallingSand
                 for (int dx = 0; dx < 8; dx++)
                 {
                     terrainColliders.MarkChunkDirtyAt(gridX + dx, gridY + dy);
+                }
+            }
+        }
+
+        private void PlaceLiftAtMouse()
+        {
+            Vector2Int cell = GetCellAtMouse();
+            // Use locked X during drag for vertical line placement
+            int x = liftDragging && liftDragX >= 0 ? liftDragX : cell.x;
+
+            simulation.LiftManager.PlaceLift(x, cell.y);
+        }
+
+        private void RemoveLiftAtMouse()
+        {
+            Vector2Int cell = GetCellAtMouse();
+            simulation.LiftManager.RemoveLift(cell.x, cell.y);
+        }
+
+        private void PlaceWallAtMouse()
+        {
+            Vector2Int cell = GetCellAtMouse();
+            int gridX = (cell.x / 8) * 8;  // Snap to 8x8 grid
+            int gridY = (cell.y / 8) * 8;
+
+            var world = simulation.World;
+            var terrainColliders = simulation.TerrainColliders;
+
+            for (int dy = 0; dy < 8; dy++)
+            {
+                for (int dx = 0; dx < 8; dx++)
+                {
+                    int px = gridX + dx;
+                    int py = gridY + dy;
+                    if (world.IsInBounds(px, py))
+                    {
+                        world.SetCell(px, py, Materials.Wall);
+                        terrainColliders.MarkChunkDirtyAt(px, py);
+                    }
+                }
+            }
+        }
+
+        private void RemoveWallAtMouse()
+        {
+            Vector2Int cell = GetCellAtMouse();
+            int gridX = (cell.x / 8) * 8;  // Snap to 8x8 grid
+            int gridY = (cell.y / 8) * 8;
+
+            var world = simulation.World;
+            var terrainColliders = simulation.TerrainColliders;
+
+            for (int dy = 0; dy < 8; dy++)
+            {
+                for (int dx = 0; dx < 8; dx++)
+                {
+                    int px = gridX + dx;
+                    int py = gridY + dy;
+                    if (world.IsInBounds(px, py))
+                    {
+                        world.SetCell(px, py, Materials.Air);
+                        terrainColliders.MarkChunkDirtyAt(px, py);
+                    }
                 }
             }
         }

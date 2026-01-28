@@ -26,8 +26,6 @@ namespace FallingSand
         /// </summary>
         public void Collect()
         {
-            Debug.Log($"[WorldItem] {toolType} collected!");
-
             // Play pickup sound (procedural beep)
             PlayPickupSound();
 

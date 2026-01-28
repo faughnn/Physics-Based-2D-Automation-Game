@@ -44,7 +44,6 @@ namespace FallingSand
 
             // Chunk colliders are generated on-demand when static materials are drawn
 
-            Debug.Log($"[TerrainColliders] Initialized for {world.chunksX}x{world.chunksY} chunks");
         }
 
         /// <summary>
@@ -74,7 +73,6 @@ namespace FallingSand
 
             edge.points = points;
 
-            Debug.Log($"[TerrainColliders] Created world boundaries: {halfWidth * 2}x{halfHeight * 2} world units");
         }
 
         private void Update()
@@ -151,11 +149,6 @@ namespace FallingSand
             // Collect static pixels in this chunk
             List<ClusterPixel> staticPixels = CollectStaticPixels(chunkX, chunkY);
 
-            if (logColliderUpdates && staticPixels.Count > 0)
-            {
-                Debug.Log($"[TerrainColliders] Chunk {chunkX},{chunkY} has {staticPixels.Count} static pixels");
-            }
-
             if (staticPixels.Count == 0)
             {
                 // No static materials - remove collider if it exists
@@ -163,9 +156,6 @@ namespace FallingSand
                 {
                     Destroy(existing.gameObject);
                     chunkColliders.Remove(chunkIndex);
-
-                    if (logColliderUpdates)
-                        Debug.Log($"[TerrainColliders] Removed collider for chunk {chunkX},{chunkY}");
                 }
                 return;
             }
@@ -215,16 +205,6 @@ namespace FallingSand
                 collider.SetPath(0, outline);
 
                 chunkColliders[chunkIndex] = collider;
-
-                if (logColliderUpdates)
-                {
-                    Debug.Log($"[TerrainColliders] Created collider for chunk {chunkX},{chunkY} with {outline.Length} vertices");
-                    // Log first few vertices to debug positioning
-                    for (int v = 0; v < Mathf.Min(4, outline.Length); v++)
-                    {
-                        Debug.Log($"  Vertex {v}: ({outline[v].x:F1}, {outline[v].y:F1})");
-                    }
-                }
             }
         }
 
@@ -260,9 +240,10 @@ namespace FallingSand
                     if (cell.materialId == Materials.Air || cell.ownerId != 0)
                         continue;
 
-                    // Check if static
+                    // Check if static and not passable (lifts are static but passable)
                     MaterialDef mat = world.materials[cell.materialId];
-                    if (mat.behaviour == BehaviourType.Static)
+                    if (mat.behaviour == BehaviourType.Static &&
+                        (mat.flags & MaterialFlags.Passable) == 0)
                     {
                         // Store in local coordinates relative to chunk center
                         short localX = (short)(lx - centerX);
@@ -284,6 +265,20 @@ namespace FallingSand
             {
                 dirtyChunks.Add(i);
             }
+        }
+
+        /// <summary>
+        /// Process all dirty chunks immediately (blocking).
+        /// Call this after level load to ensure colliders exist before gameplay.
+        /// </summary>
+        public void ProcessAllDirtyChunksNow()
+        {
+            foreach (int chunkIndex in dirtyChunks)
+            {
+                UpdateChunkCollider(chunkIndex);
+            }
+            dirtyChunks.Clear();
+            Debug.Log($"[TerrainColliderManager] Processed all dirty chunks, {chunkColliders.Count} colliders active");
         }
 
         private void OnDestroy()

@@ -69,7 +69,6 @@ namespace FallingSand.UI
                 GameObject eventSystemObj = new GameObject("EventSystem");
                 eventSystemObj.AddComponent<EventSystem>();
                 eventSystemObj.AddComponent<InputSystemUIInputModule>();
-                Debug.Log("[SettingsMenu] EventSystem created");
             }
 
             // Create Canvas
@@ -136,8 +135,6 @@ namespace FallingSand.UI
             // Hint text
             CreateSpacer(panelObj.transform, 5f);
             CreateLabel(panelObj.transform, "Press ESC to toggle menu", 12, FontStyle.Italic, new Color(0.6f, 0.6f, 0.6f));
-
-            Debug.Log("[SettingsMenu] UI created");
         }
 
         private void CreateLabel(Transform parent, string text, int fontSize, FontStyle style, Color color)

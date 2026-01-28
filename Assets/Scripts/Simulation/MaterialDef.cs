@@ -19,6 +19,7 @@ namespace FallingSand
         public const byte Conductive   = 1 << 2;  // Electricity
         public const byte Corrodes     = 1 << 3;  // Acid-like
         public const byte Diggable     = 1 << 4;  // Can be excavated by player
+        public const byte Passable     = 1 << 5;  // Cells and physics bodies can pass through
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -67,6 +68,9 @@ namespace FallingSand
         public const byte BeltRightLight = 16;  // Belt moving right (light stripe)
         public const byte Dirt = 17;            // Heavy powder that piles steeply
         public const byte Ground = 18;          // Static diggable terrain
+        public const byte LiftUp = 19;          // Lift force zone (dark stripe)
+        public const byte LiftUpLight = 20;     // Lift force zone (light stripe)
+        public const byte Wall = 21;            // Solid wall structure
 
         public const int Count = 256;  // Maximum materials
 
@@ -80,6 +84,14 @@ namespace FallingSand
                    materialId == BeltRight ||
                    materialId == BeltLeftLight ||
                    materialId == BeltRightLight;
+        }
+
+        /// <summary>
+        /// Checks if a material ID represents any type of lift.
+        /// </summary>
+        public static bool IsLift(byte materialId)
+        {
+            return materialId == LiftUp || materialId == LiftUpLight;
         }
 
         public static bool IsDiggable(MaterialDef mat)
@@ -224,7 +236,7 @@ namespace FallingSand
             defs[Dirt] = new MaterialDef
             {
                 density = 140,                              // Heavier than sand (128)
-                slideResistance = 200,                      // High resistance - piles steeply
+                slideResistance = 50,                       // Moderate resistance - piles less steeply than before
                 behaviour = BehaviourType.Powder,
                 flags = MaterialFlags.None,
                 baseColour = new Color32(139, 90, 43, 255), // Brown
@@ -239,6 +251,38 @@ namespace FallingSand
                 flags = MaterialFlags.ConductsHeat | MaterialFlags.Diggable,
                 baseColour = new Color32(92, 64, 51, 255),  // Dark brown
                 colourVariation = 8,
+            };
+
+            // Lift force zone - dark stripe (arrow pattern)
+            // Note: Lifts are hollow force zones - material passes through them
+            // These materials are for rendering only; simulation uses LiftTile array
+            defs[LiftUp] = new MaterialDef
+            {
+                density = 0,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.Passable,
+                baseColour = new Color32(70, 90, 70, 255),  // Dark green-gray
+                colourVariation = 0,
+            };
+
+            // Lift force zone - light stripe (arrow pattern)
+            defs[LiftUpLight] = new MaterialDef
+            {
+                density = 0,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.Passable,
+                baseColour = new Color32(100, 130, 100, 255),  // Light green-gray
+                colourVariation = 0,
+            };
+
+            // Wall - solid structure block
+            defs[Wall] = new MaterialDef
+            {
+                density = 255,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.None,
+                baseColour = new Color32(70, 70, 80, 255),  // Dark gray, distinct from stone
+                colourVariation = 5,
             };
 
             return defs;

@@ -17,13 +17,20 @@ namespace FallingSand
         private MeshRenderer meshRenderer;
         private MeshFilter meshFilter;
 
-        // Buffer for texture upload
+        // Buffer for texture upload (full world)
         private Color32[] textureBuffer;
         private Color32[] densityBuffer;
 
+        // Chunk upload buffers (64x64 = 4096 cells)
+        private Color32[] chunkBuffer;
+        private Color32[] chunkDensityBuffer;
+        private const int ChunkBufferSize = CellWorld.ChunkSize * CellWorld.ChunkSize;
+
+        // Track if we need a full upload (first frame, terrain load, etc.)
+        private bool needsFullUpload = true;
+
         public void Initialize(CellWorld world)
         {
-            Debug.Log("[CellRenderer] Initialize() called");
             this.world = world;
 
             CreateTextures();
@@ -31,14 +38,10 @@ namespace FallingSand
             CreateQuad();
             BuildPalette();
             UploadFullTexture();
-
-            Debug.Log("[CellRenderer] Initialize() complete");
         }
 
         private void CreateTextures()
         {
-            Debug.Log($"[CellRenderer] Creating textures for {world.width}x{world.height} world...");
-
             // Cell texture - R8 format stores material IDs
             // Using RGBA32 for compatibility, only red channel is used
             cellTexture = new Texture2D(
@@ -50,7 +53,6 @@ namespace FallingSand
             );
             cellTexture.filterMode = FilterMode.Point;  // Crisp pixels
             cellTexture.wrapMode = TextureWrapMode.Clamp;
-            Debug.Log($"[CellRenderer] Cell texture created: {cellTexture.width}x{cellTexture.height}");
 
             // Density texture - per-cell density for lighting calculations
             densityTexture = new Texture2D(
@@ -62,39 +64,35 @@ namespace FallingSand
             );
             densityTexture.filterMode = FilterMode.Point;
             densityTexture.wrapMode = TextureWrapMode.Clamp;
-            Debug.Log("[CellRenderer] Density texture created");
 
             // Palette texture - 256 colours
             paletteTexture = new Texture2D(256, 1, TextureFormat.RGBA32, false, false);
             paletteTexture.filterMode = FilterMode.Point;
             paletteTexture.wrapMode = TextureWrapMode.Clamp;
-            Debug.Log("[CellRenderer] Palette texture created");
 
             // Variation texture - per-material colour variation amount (256x1 lookup)
             variationTexture = new Texture2D(256, 1, TextureFormat.RGBA32, false, true);
             variationTexture.filterMode = FilterMode.Point;
             variationTexture.wrapMode = TextureWrapMode.Clamp;
-            Debug.Log("[CellRenderer] Variation texture created");
 
             // Emission texture - per-material glow intensity (256x1 lookup)
             emissionTexture = new Texture2D(256, 1, TextureFormat.RGBA32, false, true);
             emissionTexture.filterMode = FilterMode.Point;
             emissionTexture.wrapMode = TextureWrapMode.Clamp;
-            Debug.Log("[CellRenderer] Emission texture created");
 
             // Allocate upload buffers
             textureBuffer = new Color32[world.width * world.height];
             densityBuffer = new Color32[world.width * world.height];
-            Debug.Log($"[CellRenderer] Upload buffers allocated: {textureBuffer.Length} pixels each");
+
+            // Allocate chunk buffers (for partial uploads)
+            chunkBuffer = new Color32[ChunkBufferSize];
+            chunkDensityBuffer = new Color32[ChunkBufferSize];
         }
 
         private void CreateMaterial()
         {
-            Debug.Log("[CellRenderer] Creating material...");
-
             if (worldShader == null)
             {
-                Debug.Log("[CellRenderer] Shader not assigned, searching for 'FallingSand/WorldRender'...");
                 worldShader = Shader.Find("FallingSand/WorldRender");
             }
 
@@ -109,10 +107,6 @@ namespace FallingSand
                 }
                 Debug.LogWarning("[CellRenderer] Using fallback Unlit/Color shader");
             }
-            else
-            {
-                Debug.Log($"[CellRenderer] Shader found: {worldShader.name}");
-            }
 
             renderMaterial = new Material(worldShader);
             renderMaterial.SetTexture("_CellTex", cellTexture);
@@ -120,13 +114,10 @@ namespace FallingSand
             renderMaterial.SetTexture("_DensityTex", densityTexture);
             renderMaterial.SetTexture("_VariationTex", variationTexture);
             renderMaterial.SetTexture("_EmissionTex", emissionTexture);
-            Debug.Log($"[CellRenderer] Material created: {renderMaterial.name}");
         }
 
         private void CreateQuad()
         {
-            Debug.Log("[CellRenderer] Creating quad mesh...");
-
             // Add mesh components
             meshFilter = gameObject.AddComponent<MeshFilter>();
             meshRenderer = gameObject.AddComponent<MeshRenderer>();
@@ -140,8 +131,6 @@ namespace FallingSand
             int pixelHeight = world.height * CoordinateUtils.PixelsPerCell; // 512 * 2 = 1024 pixels
             float halfWidth = pixelWidth / 2f;   // 1024
             float halfHeight = pixelHeight / 2f; // 512
-
-            Debug.Log($"[CellRenderer] Quad size: {pixelWidth} x {pixelHeight} pixels (cells: {world.width} x {world.height})");
 
             mesh.vertices = new Vector3[]
             {
@@ -168,14 +157,10 @@ namespace FallingSand
             meshRenderer.material = renderMaterial;
             meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             meshRenderer.receiveShadows = false;
-
-            Debug.Log($"[CellRenderer] Quad created. Bounds: {mesh.bounds}, Renderer enabled: {meshRenderer.enabled}");
-            Debug.Log($"[CellRenderer] Material assigned: {meshRenderer.material?.name ?? "NULL"}, Shader: {meshRenderer.material?.shader?.name ?? "NULL"}");
         }
 
         private void BuildPalette()
         {
-            Debug.Log("[CellRenderer] Building palette and material textures...");
             Color32[] colours = new Color32[256];
             Color32[] variations = new Color32[256];
             Color32[] emissions = new Color32[256];
@@ -187,9 +172,6 @@ namespace FallingSand
                 emissions[i] = new Color32(world.materials[i].emission, 0, 0, 255);
             }
 
-            // Log first few colors
-            Debug.Log($"[CellRenderer] Palette colors - Air[0]: {colours[0]}, Stone[1]: {colours[1]}, Sand[2]: {colours[2]}, Water[3]: {colours[3]}");
-
             paletteTexture.SetPixels32(colours);
             paletteTexture.Apply();
 
@@ -198,21 +180,15 @@ namespace FallingSand
 
             emissionTexture.SetPixels32(emissions);
             emissionTexture.Apply();
-
-            Debug.Log("[CellRenderer] Palette, variation, and emission textures built and applied");
         }
-
-        private int uploadCount = 0;
 
         public void UploadFullTexture()
         {
             // Convert cell material IDs to colours
             // Material ID goes into red channel as 0-255 value
-            int nonAirCount = 0;
             for (int i = 0; i < world.cells.Length; i++)
             {
                 byte materialId = world.cells[i].materialId;
-                if (materialId != Materials.Air) nonAirCount++;
                 // Store materialId in red channel, scaled to be read as 0-1 in shader
                 textureBuffer[i] = new Color32(materialId, 0, 0, 255);
                 // Density: 0 for air, 255 for solid materials (used for lighting normals)
@@ -225,12 +201,90 @@ namespace FallingSand
 
             densityTexture.SetPixels32(densityBuffer);
             densityTexture.Apply(updateMipmaps: false);
+        }
 
-            uploadCount++;
-            if (uploadCount <= 3 || uploadCount % 60 == 0)
+        /// <summary>
+        /// Upload only chunks that changed since last frame.
+        /// Uses activeLastFrame and IsDirty flags to determine which chunks need upload.
+        /// </summary>
+        public void UploadDirtyChunks()
+        {
+            if (needsFullUpload)
             {
-                Debug.Log($"[CellRenderer] Texture upload #{uploadCount}, non-air cells: {nonAirCount}");
+                UploadFullTexture();
+                needsFullUpload = false;
+                return;
             }
+
+            bool anyUploaded = false;
+
+            for (int chunkIndex = 0; chunkIndex < world.chunks.Length; chunkIndex++)
+            {
+                ChunkState chunk = world.chunks[chunkIndex];
+
+                // Upload if chunk was active during simulation OR was dirtied by belts after simulation
+                bool needsRender = chunk.activeLastFrame != 0
+                                || (chunk.flags & ChunkFlags.IsDirty) != 0;
+
+                if (!needsRender)
+                    continue;
+
+                int chunkX = chunkIndex % world.chunksX;
+                int chunkY = chunkIndex / world.chunksX;
+
+                UploadChunk(chunkX, chunkY);
+                anyUploaded = true;
+            }
+
+            if (anyUploaded)
+            {
+                cellTexture.Apply(updateMipmaps: false);
+                densityTexture.Apply(updateMipmaps: false);
+            }
+        }
+
+        /// <summary>
+        /// Upload a single chunk region to the textures.
+        /// </summary>
+        private void UploadChunk(int chunkX, int chunkY)
+        {
+            int startX = chunkX * CellWorld.ChunkSize;
+            int startY = chunkY * CellWorld.ChunkSize;
+
+            // Clamp to world bounds (edge chunks may be partial)
+            int endX = Mathf.Min(startX + CellWorld.ChunkSize, world.width);
+            int endY = Mathf.Min(startY + CellWorld.ChunkSize, world.height);
+            int chunkWidth = endX - startX;
+            int chunkHeight = endY - startY;
+
+            // Fill chunk buffer
+            int bufferIdx = 0;
+            for (int y = startY; y < endY; y++)
+            {
+                for (int x = startX; x < endX; x++)
+                {
+                    int cellIndex = y * world.width + x;
+                    byte materialId = world.cells[cellIndex].materialId;
+
+                    chunkBuffer[bufferIdx] = new Color32(materialId, 0, 0, 255);
+                    byte density = materialId == Materials.Air ? (byte)0 : (byte)255;
+                    chunkDensityBuffer[bufferIdx] = new Color32(density, 0, 0, 255);
+                    bufferIdx++;
+                }
+            }
+
+            // Upload chunk region to textures
+            cellTexture.SetPixels32(startX, startY, chunkWidth, chunkHeight, chunkBuffer);
+            densityTexture.SetPixels32(startX, startY, chunkWidth, chunkHeight, chunkDensityBuffer);
+        }
+
+        /// <summary>
+        /// Force a full texture upload on the next render.
+        /// Call this after bulk terrain changes, level loading, etc.
+        /// </summary>
+        public void ForceFullUpload()
+        {
+            needsFullUpload = true;
         }
 
         private void OnDestroy()

@@ -1,4 +1,5 @@
 using UnityEngine;
+using FallingSand.Debugging;
 
 namespace FallingSand
 {
@@ -9,99 +10,163 @@ namespace FallingSand
     public class GameController : MonoBehaviour
     {
         [Header("World Settings")]
-        [SerializeField] private int worldWidth = 1024;
-        [SerializeField] private int worldHeight = 512;
+        [SerializeField] private int worldWidth = 1920;
+        [SerializeField] private int worldHeight = 1620;
+
+        [Header("Viewport Settings")]
+        [SerializeField] private int viewportHeight = 540;   // Cells visible vertically (width derived from aspect ratio)
 
         [Header("Player Settings")]
         [SerializeField] private Color playerColor = Color.cyan;
-        [SerializeField] private Vector2 playerSpawnCell = new Vector2(512, 100);
-        [SerializeField] private float moveSpeed = 200f;
-        [SerializeField] private float jumpForce = 400f;
 
         [Header("Item Settings")]
         [SerializeField] private Color shovelColor = new Color(0.6f, 0.4f, 0.2f); // Brown
-        [SerializeField] private Vector2 shovelSpawnCell = new Vector2(650, 458);  // Further right, above floor
 
         private SimulationManager simulation;
         private GameObject player;
         private Camera mainCamera;
+        private LevelLoader levelLoader;
 
         private void Start()
         {
-            Debug.Log("[GameController] Starting Game scene...");
+            // 1. Use level-defined world dimensions (overrides serialized fields)
+            worldWidth = TutorialLevelData.WorldWidth;
+            worldHeight = TutorialLevelData.WorldHeight;
 
-            // Find or create SimulationManager
+            // 2. Find or create SimulationManager with correct dimensions
             simulation = SimulationManager.Instance;
             if (simulation == null)
             {
                 simulation = SimulationManager.Create(worldWidth, worldHeight);
                 simulation.Initialize();
             }
-            Debug.Log("[GameController] SimulationManager ready");
 
-            // Setup camera
+            // 3. Setup camera
             SetupCamera();
 
-            // Create initial terrain (floor for player to stand on)
-            CreateInitialTerrain();
+            // 4. Create ProgressionManager (must exist before Bucket)
+            CreateProgressionManager();
 
-            // Create the player
-            CreatePlayer();
+            // 5. Load level terrain
+            levelLoader = new LevelLoader(simulation);
+            var levelData = TutorialLevelData.Create();
+            levelLoader.LoadLevel(levelData);
 
-            // Spawn items
-            CreateShovelItem(shovelSpawnCell);
+            // 5b. Generate terrain colliders immediately (before player spawns)
+            simulation.TerrainColliders.ProcessAllDirtyChunksNow();
 
-            Debug.Log($"[GameController] === READY === World: {simulation.WorldWidth}x{simulation.WorldHeight}");
-            Debug.Log("[GameController] Controls: A/D or Arrows = Move, Space = Jump");
+            // 6. Register all level objectives
+            foreach (var objective in levelData.Objectives)
+            {
+                ProgressionManager.Instance.AddObjective(objective);
+            }
+
+            // 7. Create the player at level-defined spawn
+            CreatePlayer(levelData.PlayerSpawn);
+
+            // 8. Setup camera follow (after player exists)
+            SetupCameraFollow();
+
+            // 9. Force camera to player position (CameraFollow.Initialize may not work correctly on first frame)
+            Vector2 playerWorldPos = CoordinateUtils.CellToWorld(
+                levelData.PlayerSpawn.x, levelData.PlayerSpawn.y, worldWidth, worldHeight);
+            mainCamera.transform.position = new Vector3(playerWorldPos.x, playerWorldPos.y, -10);
+            Debug.Log($"Camera positioned at player: {playerWorldPos}, cell spawn: {levelData.PlayerSpawn}");
+
+            // 10. Spawn shovel item
+            CreateShovelItem(levelData.ShovelSpawn);
+
+            // 11. Create all buckets
+            CreateBuckets(levelData);
+
+            // 12. Add structure placement controller to player
+            player.AddComponent<StructurePlacementController>();
+
+            // 13. Create progression UI (if not already created)
+            if (FindFirstObjectByType<ProgressionUI>() == null)
+            {
+                GameObject uiObj = new GameObject("ProgressionUI");
+                uiObj.AddComponent<ProgressionUI>();
+            }
+
+            // 14. Create debug overlay
+            CreateDebugOverlay();
+        }
+
+        private void CreateDebugOverlay()
+        {
+            if (DebugOverlay.Instance != null) return;
+
+            GameObject debugObj = new GameObject("DebugOverlay");
+            var overlay = debugObj.AddComponent<DebugOverlay>();
+
+            overlay.RegisterSection(new SimulationDebugSection(simulation));
+            overlay.RegisterSection(new GameDebugSection(
+                player.GetComponent<PlayerController>(), worldWidth, worldHeight));
         }
 
         private void SetupCamera()
         {
+            // Destroy any existing main camera to ensure clean state
             mainCamera = Camera.main;
-            if (mainCamera == null)
+            if (mainCamera != null)
+            {
+                // Remove any existing CameraFollow that might interfere
+                var existingFollow = mainCamera.GetComponent<CameraFollow>();
+                if (existingFollow != null)
+                {
+                    Destroy(existingFollow);
+                }
+            }
+            else
             {
                 GameObject camObj = new GameObject("Main Camera");
                 camObj.tag = "MainCamera";
                 mainCamera = camObj.AddComponent<Camera>();
             }
 
-            // Setup orthographic camera to view the world
+            // Setup orthographic camera for viewport (not full world)
             mainCamera.orthographic = true;
 
-            // Get recommended settings from SimulationManager
-            var (orthoSize, position) = simulation.GetRecommendedCameraSettings();
-            mainCamera.orthographicSize = orthoSize;
-            mainCamera.transform.position = position;
+            // Viewport dimensions determine ortho size
+            // Formula: orthoSize = viewportHeightCells * PixelsPerCell / 2
+            // For 540 cells: orthoSize = 540 * 2 / 2 = 540 world units
+            mainCamera.orthographicSize = viewportHeight * CoordinateUtils.PixelsPerCell / 2f;
+
+            // Temporary position - will be set to player spawn in step 8
+            mainCamera.transform.position = new Vector3(0, 0, -10);
             mainCamera.backgroundColor = new Color(0.1f, 0.1f, 0.15f);
-
-            Debug.Log($"[GameController] Camera setup. Ortho size: {orthoSize}, Pos: {position}");
         }
 
-        private void CreateInitialTerrain()
+        private void SetupCameraFollow()
         {
-            var world = simulation.World;
-            var terrainColliders = simulation.TerrainColliders;
+            CameraFollow follow = mainCamera.gameObject.AddComponent<CameraFollow>();
 
-            // Create a stone floor near the bottom
-            // Y increases downward in cell space, so worldHeight - 50 is 50 cells from bottom
-            int floorY = worldHeight - 50;
-            int floorThickness = 10;
+            // World bounds in world units
+            // World spans from (-worldWidth, -worldHeight) to (+worldWidth, +worldHeight)
+            float worldHalfWidth = worldWidth;   // Cell width = world half-width in units
+            float worldHalfHeight = worldHeight; // Cell height = world half-height in units
 
-            Debug.Log($"[GameController] Creating stone floor at Y={floorY}, thickness={floorThickness}");
+            follow.Initialize(
+                player.transform,
+                -worldHalfWidth, worldHalfWidth,   // World X bounds
+                -worldHalfHeight, worldHalfHeight  // World Y bounds
+            );
 
-            for (int x = 0; x < worldWidth; x++)
-            {
-                for (int y = floorY; y < floorY + floorThickness; y++)
-                {
-                    world.SetCell(x, y, Materials.Stone);
-                    terrainColliders.MarkChunkDirtyAt(x, y);
-                }
-            }
-
-            Debug.Log($"[GameController] Floor created: {worldWidth}x{floorThickness} cells of stone");
+            // Force snap to player position after initialization
+            follow.SnapToTarget();
         }
 
-        private void CreatePlayer()
+        private void CreateProgressionManager()
+        {
+            if (ProgressionManager.Instance == null)
+            {
+                GameObject pmObj = new GameObject("ProgressionManager");
+                pmObj.AddComponent<ProgressionManager>();
+            }
+        }
+
+        private void CreatePlayer(Vector2Int spawnCell)
         {
             player = new GameObject("Player");
 
@@ -115,7 +180,6 @@ namespace FallingSand
             // Set gravity to match cell simulation
             float unityGravity = PhysicsSettings.GetUnityGravity();
             Physics2D.gravity = new Vector2(0, unityGravity);
-            Debug.Log($"[GameController] Physics2D.gravity set to {Physics2D.gravity}");
 
             // BoxCollider2D - 8x16 cells = 16x32 world units
             var collider = player.AddComponent<BoxCollider2D>();
@@ -130,13 +194,16 @@ namespace FallingSand
             // PlayerController - handles movement and jumping
             var controller = player.AddComponent<PlayerController>();
 
-            // Position player in world coordinates
-            // Cell to World: worldX = cellX * 2 - worldWidth, worldY = worldHeight - cellY * 2
-            float worldX = playerSpawnCell.x * 2 - worldWidth;
-            float worldY = worldHeight - playerSpawnCell.y * 2;
-            player.transform.position = new Vector3(worldX, worldY, 0);
+            // CellGrabSystem - grab and drop loose cells (requires Shovel equipped)
+            player.AddComponent<CellGrabSystem>();
 
-            Debug.Log($"[GameController] Player created at cell ({playerSpawnCell.x}, {playerSpawnCell.y}) -> world ({worldX}, {worldY})");
+            // DiggingController - dig Ground material with shovel
+            player.AddComponent<DiggingController>();
+
+            // Position player in world coordinates using CoordinateUtils
+            Vector2 worldPos = CoordinateUtils.CellToWorld(spawnCell.x, spawnCell.y, worldWidth, worldHeight);
+            player.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
+            Debug.Log($"Player created at cell {spawnCell} -> world {worldPos}");
         }
 
         /// <summary>
@@ -165,7 +232,7 @@ namespace FallingSand
             );
         }
 
-        private void CreateShovelItem(Vector2 cellPosition)
+        private void CreateShovelItem(Vector2Int cellPosition)
         {
             GameObject item = new GameObject("Shovel");
 
@@ -183,12 +250,9 @@ namespace FallingSand
             // Item component
             item.AddComponent<WorldItem>();
 
-            // Position in world coordinates
-            float worldX = cellPosition.x * 2 - worldWidth;
-            float worldY = worldHeight - cellPosition.y * 2;
-            item.transform.position = new Vector3(worldX, worldY, 0);
-
-            Debug.Log($"[GameController] Shovel spawned at cell ({cellPosition.x}, {cellPosition.y}) -> world ({worldX}, {worldY})");
+            // Position in world coordinates using CoordinateUtils
+            Vector2 worldPos = CoordinateUtils.CellToWorld(cellPosition.x, cellPosition.y, worldWidth, worldHeight);
+            item.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
         }
 
         private Sprite CreateShovelSprite()
@@ -225,6 +289,30 @@ namespace FallingSand
 
             // PPU=2: 16x64 pixels becomes 8x32 world units
             return Sprite.Create(tex, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f), 2f);
+        }
+
+        private void CreateBuckets(LevelData levelData)
+        {
+            int count = Mathf.Min(levelData.BucketSpawns.Count, levelData.Objectives.Count);
+
+            for (int i = 0; i < count; i++)
+            {
+                var position = levelData.BucketSpawns[i];
+                var objective = levelData.Objectives[i];
+
+                // Determine if this bucket starts inactive (has a prerequisite)
+                bool startsInactive = !string.IsNullOrEmpty(objective.prerequisiteId);
+
+                CreateBucket(position, objective, startsInactive);
+            }
+        }
+
+        private void CreateBucket(Vector2Int cellPosition, ObjectiveData objective, bool startsInactive)
+        {
+            GameObject bucketObj = new GameObject($"Bucket_{objective.objectiveId}");
+            Bucket bucket = bucketObj.AddComponent<Bucket>();
+            bucket.Initialize(simulation.World, cellPosition, objective.objectiveId, startsInactive);
+            bucket.SetObjective(objective);
         }
 
         /// <summary>

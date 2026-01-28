@@ -31,6 +31,9 @@ namespace FallingSand
         // Belt interaction - set by BeltManager before physics, used by ClusterManager after physics
         [HideInInspector] public bool isOnBelt;
 
+        // Lift interaction - set by LiftManager before physics, used by ClusterManager after physics
+        [HideInInspector] public bool isOnLift;
+
         /// <summary>
         /// World position from Rigidbody2D.
         /// </summary>

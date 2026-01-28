@@ -14,8 +14,9 @@ namespace FallingSand
         public ushort ownerId;       // If owned by a cluster (rigid body), which one (0 = free cell)
         public byte velocityFracX;   // Fractional accumulator for horizontal forces
         public byte velocityFracY;   // Fractional accumulator for gravity
+        public byte frameUpdated;    // Last frame this cell was simulated (prevents multi-processing)
     }
-    // Size: 10 bytes per cell
+    // Size: 11 bytes per cell
 
     public static class CellFlags
     {

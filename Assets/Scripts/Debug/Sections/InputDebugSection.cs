@@ -41,6 +41,20 @@ namespace FallingSand.Debugging
                     DrawLabel($"Belts: {beltCount} | Tiles: {tileCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
                     lines++;
                 }
+                else if (sandbox.LiftMode)
+                {
+                    DrawLabel("[LIFT MODE] Hollow force zone", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.green);
+                    lines++;
+
+                    int liftCount = sandbox.LiftManager?.LiftCount ?? 0;
+                    DrawLabel($"Lifts: {liftCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
+                    lines++;
+                }
+                else if (sandbox.WallMode)
+                {
+                    DrawLabel("[WALL MODE] Solid 8x8 blocks", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.gray);
+                    lines++;
+                }
                 else
                 {
                     // Current material
@@ -49,7 +63,7 @@ namespace FallingSand.Debugging
                 }
 
                 // Control hints
-                DrawLabel("B: Belt Mode | Q/E: Direction", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.gray);
+                DrawLabel("B: Belt | L: Lift | W: Wall | Q/E: Dir", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.gray);
                 lines++;
 
                 DrawLabel("1-6: Material | LMB/RMB: Paint", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.gray);

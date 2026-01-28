@@ -1,3 +1,5 @@
+**STATUS: COMPLETED** - Implemented on 2026-01-25
+
 # Digging System
 
 ## Summary
@@ -233,22 +235,9 @@ namespace FallingSand
             // Clamp to sbyte range (-128 to 127)
             cell.velocityY = (sbyte)Mathf.Clamp(-upwardSpeed, -16, 16);
             cell.velocityX = (sbyte)Mathf.Clamp(horizontalSpeed, -16, 16);
-            cell.frameUpdated = world.currentFrame;
 
             world.cells[index] = cell;
             world.MarkDirty(x, y);
-        }
-
-        /// <summary>
-        /// Convert world position to cell coordinates.
-        /// Uses same formula as SandboxController for consistency.
-        /// </summary>
-        private Vector2Int WorldToCell(Vector2 worldPos)
-        {
-            var world = World;
-            int cellX = Mathf.FloorToInt((worldPos.x + world.width) / 2f);
-            int cellY = Mathf.FloorToInt((world.height - worldPos.y) / 2f);
-            return new Vector2Int(cellX, cellY);
         }
     }
 }
@@ -339,16 +328,11 @@ private void SpawnDirtWithVelocity(int x, int y)
 
     cell.velocityY = (sbyte)Mathf.Clamp(-upSpeed, -16, 16);
     cell.velocityX = (sbyte)Mathf.Clamp(hSpeed, -16, 16);
-    cell.frameUpdated = world.currentFrame;
 
     world.cells[index] = cell;
     world.MarkDirty(x, y);
 }
 ```
-
-### Why Set frameUpdated?
-
-Setting `cell.frameUpdated = world.currentFrame` prevents the simulation from processing this cell again in the same frame. Without this, the cell might immediately fall back down before we see the upward motion.
 
 ---
 
@@ -379,7 +363,7 @@ float worldX = cellX * 2f - worldWidth;
 float worldY = worldHeight - cellY * 2f;
 ```
 
-Note: A `CoordinateUtils` class is planned (see OPEN-ScatteredCoordinateConversion.md) but not yet implemented. Use the inline formulas for now.
+**Use `CoordinateUtils`** - The `CoordinateUtils` class in `Assets/Scripts/Simulation/CoordinateUtils.cs` provides these conversions. Use `CoordinateUtils.WorldToCell()` for consistency across the codebase.
 
 ---
 
@@ -387,17 +371,14 @@ Note: A `CoordinateUtils` class is planned (see OPEN-ScatteredCoordinateConversi
 
 | Dependency | Status | Notes |
 |------------|--------|-------|
-| Item Pickup System | Planned | 01-ItemPickupSystem.md - Provides `ToolType.Shovel` |
-| Ground Material | Planned | PLANNED-GroundMaterial.md - `Materials.Ground = 18` |
-| Dirt Material | Planned | PLANNED-DirtMaterial.md - `Materials.Dirt = 17` |
-| SimulationManager | Exists | Singleton access to simulation |
-| PlayerController | Exists | Extended by Item Pickup System |
+| Item Pickup System | **Exists** | 01-ItemPickupSystem.md - Provides `ToolType.Shovel` and `EquippedTool` |
+| Ground Material | **Exists** | `Materials.Ground = 18` in MaterialDef.cs |
+| Dirt Material | **Exists** | `Materials.Dirt = 17` in MaterialDef.cs |
+| SimulationManager | **Exists** | Singleton access to simulation |
+| PlayerController | **Exists** | Has `EquippedTool` property |
+| CoordinateUtils | **Exists** | `CoordinateUtils.WorldToCell()` for coordinate conversion |
 
-**Implementation Order:**
-1. Dirt Material (adds `Materials.Dirt`)
-2. Ground Material (adds `Materials.Ground` and `Diggable` flag)
-3. Item Pickup System (adds `EquippedTool` to player)
-4. Digging System (this plan)
+All dependencies are now implemented.
 
 ---
 
@@ -436,7 +417,6 @@ Note: A `CoordinateUtils` class is planned (see OPEN-ScatteredCoordinateConversi
    +-- Set materialId = Dirt
    +-- Set velocityY = random negative (upward)
    +-- Set velocityX = random spread
-   +-- Set frameUpdated
    +-- MarkDirty
    |
    v

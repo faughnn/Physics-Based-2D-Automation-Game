@@ -27,6 +27,13 @@ namespace FallingSand
         /// </summary>
         public const int MaxVelocity = 16;
 
+        /// <summary>
+        /// Lift force applied per frame. When greater than FractionalGravity,
+        /// net force is upward. Default 20 gives net -3 per frame (256/3 ≈ 85 frames
+        /// between upward velocity increments).
+        /// </summary>
+        public const byte LiftForce = 20;
+
         // Sleep thresholds for cluster physics
         /// <summary>
         /// Linear velocity below which bodies can start sleeping (world units/sec).

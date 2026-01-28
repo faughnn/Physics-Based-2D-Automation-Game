@@ -430,7 +430,7 @@ Configure in Unity:
 - [x] Collected tools are added to inventory
 - [x] Picking up new tool silently replaces equipped tool
 - [x] Previous tools remain in inventory
-- [x] EquipTool() can switch between inventory tools
+- [x] EquipTool() can switch between inventory items
 
 ---
 

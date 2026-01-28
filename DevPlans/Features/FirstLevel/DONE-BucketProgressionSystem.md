@@ -1,3 +1,7 @@
+---
+STATUS: COMPLETED (2026-01-25)
+---
+
 # Bucket & Progression System Implementation Plan
 
 ## Summary
@@ -92,30 +96,18 @@ public class CollectionZone
 
 ### World-to-Cell Coordinate Conversion
 
+**NOTE:** Use the existing `CoordinateUtils` class in `Assets/Scripts/Simulation/CoordinateUtils.cs`.
+No need to create `CoordinateHelper`.
+
 The simulation uses a coordinate system where:
 - Cell (0, 0) is top-left
 - Y increases downward
-- Each cell = 2x2 world units
+- Each cell = 2x2 world units (CoordinateUtils.CellToWorldScale)
 
 ```csharp
-public static class CoordinateHelper
-{
-    public static Vector2Int WorldToCell(Vector2 worldPos, int worldWidth, int worldHeight)
-    {
-        // World coords: X from -worldWidth to +worldWidth, Y from -worldHeight to +worldHeight
-        // Cell coords: X from 0 to worldWidth-1, Y from 0 to worldHeight-1 (Y=0 at top)
-        int cellX = Mathf.FloorToInt((worldPos.x + worldWidth) / 2f);
-        int cellY = Mathf.FloorToInt((worldHeight - worldPos.y) / 2f);
-        return new Vector2Int(cellX, cellY);
-    }
-
-    public static Vector2 CellToWorld(int cellX, int cellY, int worldWidth, int worldHeight)
-    {
-        float worldX = cellX * 2f - worldWidth;
-        float worldY = worldHeight - cellY * 2f;
-        return new Vector2(worldX, worldY);
-    }
-}
+// Use existing CoordinateUtils methods:
+CoordinateUtils.WorldToCell(worldPos, worldWidth, worldHeight);
+CoordinateUtils.CellToWorld(cellX, cellY, worldWidth, worldHeight);
 ```
 
 ---
@@ -562,7 +554,6 @@ namespace FallingSand
 
         private string GetMaterialName(byte materialId)
         {
-            // TODO: Add Dirt material
             return materialId switch
             {
                 Materials.Sand => "Sand",
@@ -570,6 +561,8 @@ namespace FallingSand
                 Materials.Water => "Water",
                 Materials.IronOre => "Iron Ore",
                 Materials.Coal => "Coal",
+                Materials.Dirt => "Dirt",
+                Materials.Ground => "Ground",
                 _ => "Material"
             };
         }
@@ -652,24 +645,13 @@ private void CreateBucket()
 
 ---
 
-## Adding Dirt Material
+## Dirt Material
 
-A new Dirt material needs to be added to Materials.cs:
+**NOTE:** `Materials.Dirt` already exists in `MaterialDef.cs` (ID 17). No changes needed.
 
 ```csharp
-// In Materials.cs:
-public const byte Dirt = 17;  // Next available ID after BeltRightLight
-
-// In CreateDefaults():
-defs[Dirt] = new MaterialDef
-{
-    density = 140,              // Slightly heavier than sand
-    friction = 30,              // More friction than sand
-    behaviour = BehaviourType.Powder,
-    flags = MaterialFlags.None,
-    baseColour = new Color32(101, 67, 33, 255),  // Brown
-    colourVariation = 20,
-};
+// Already defined in MaterialDef.cs:
+public const byte Dirt = 17;
 ```
 
 ---
@@ -680,7 +662,7 @@ defs[Dirt] = new MaterialDef
 1. Add `Ability` enum
 2. Add `ObjectiveData` struct
 3. Create `ProgressionManager` with events and state tracking
-4. Add Dirt material to Materials.cs
+4. ~~Add Dirt material to Materials.cs~~ (Already exists)
 
 ### Phase 2: Collection System
 5. Create `CollectionZone` helper class

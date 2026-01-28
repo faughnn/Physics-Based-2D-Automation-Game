@@ -44,29 +44,24 @@ namespace FallingSand
             if (keyboard.digit7Key.wasPressedThisFrame)
             {
                 ClusterFactory.CreateCircleCluster(mouseWorld, testSize, testMaterial, clusterManager);
-                UnityEngine.Debug.Log($"[ClusterTestSpawner] Spawned circle cluster at {mouseWorld}");
             }
             if (keyboard.digit8Key.wasPressedThisFrame)
             {
                 ClusterFactory.CreateSquareCluster(mouseWorld, testSize, testMaterial, clusterManager);
-                UnityEngine.Debug.Log($"[ClusterTestSpawner] Spawned square cluster at {mouseWorld}");
             }
             if (keyboard.digit9Key.wasPressedThisFrame)
             {
                 ClusterFactory.CreateLShapeCluster(mouseWorld, testSize * 2, testMaterial, clusterManager);
-                UnityEngine.Debug.Log($"[ClusterTestSpawner] Spawned L-shape cluster at {mouseWorld}");
             }
 
             // Adjust test size with [ and ]
             if (keyboard.leftBracketKey.wasPressedThisFrame)
             {
                 testSize = Mathf.Max(2, testSize - 1);
-                UnityEngine.Debug.Log($"[ClusterTestSpawner] Test size: {testSize}");
             }
             if (keyboard.rightBracketKey.wasPressedThisFrame)
             {
                 testSize = Mathf.Min(20, testSize + 1);
-                UnityEngine.Debug.Log($"[ClusterTestSpawner] Test size: {testSize}");
             }
         }
     }

@@ -19,6 +19,7 @@ namespace FallingSand
         private ClusterManager clusterManager;
         private TerrainColliderManager terrainColliders;
         private BeltManager beltManager;
+        private LiftManager liftManager;
         private CellRenderer cellRenderer;
 
         // Singleton instance
@@ -31,11 +32,10 @@ namespace FallingSand
         public ClusterManager ClusterManager => clusterManager;
         public TerrainColliderManager TerrainColliders => terrainColliders;
         public BeltManager BeltManager => beltManager;
+        public LiftManager LiftManager => liftManager;
         public CellRenderer CellRenderer => cellRenderer;
         public int WorldWidth => worldWidth;
         public int WorldHeight => worldHeight;
-
-        private int frameCount = 0;
 
         private void Awake()
         {
@@ -73,43 +73,35 @@ namespace FallingSand
                 return;
             }
 
-            Debug.Log($"[SimulationManager] Initializing {worldWidth}x{worldHeight} world...");
-
             // Create the world
             world = new CellWorld(worldWidth, worldHeight);
-            Debug.Log($"[SimulationManager] World created. Cells: {world.cells.Length}, Chunks: {world.chunks.Length}");
 
             // Create the multithreaded simulator
             simulator = new CellSimulatorJobbed();
-            Debug.Log("[SimulationManager] CellSimulatorJobbed created");
 
             // Create cluster manager (handles rigid body physics)
             GameObject clusterManagerObj = new GameObject("ClusterManager");
             clusterManager = clusterManagerObj.AddComponent<ClusterManager>();
             clusterManager.Initialize(world);
-            Debug.Log("[SimulationManager] ClusterManager created");
 
             // Create terrain collider manager (for cluster-terrain collisions)
             terrainColliders = clusterManagerObj.AddComponent<TerrainColliderManager>();
             terrainColliders.Initialize(world);
-            Debug.Log("[SimulationManager] TerrainColliderManager created");
 
             // Create belt manager
             beltManager = new BeltManager(world);
-            Debug.Log("[SimulationManager] BeltManager created");
+
+            // Create lift manager
+            liftManager = new LiftManager(world);
 
             // Create renderer
             GameObject rendererObj = new GameObject("CellRenderer");
             cellRenderer = rendererObj.AddComponent<CellRenderer>();
             cellRenderer.Initialize(world);
-            Debug.Log("[SimulationManager] CellRenderer initialized");
 
             // Create graphics manager (handles visual effects)
             GameObject graphicsObj = new GameObject("GraphicsManager");
             graphicsObj.AddComponent<FallingSand.Graphics.GraphicsManager>();
-            Debug.Log("[SimulationManager] GraphicsManager created");
-
-            Debug.Log($"[SimulationManager] === READY === World: {worldWidth}x{worldHeight} cells ({world.chunksX}x{world.chunksY} chunks)");
         }
 
         private void Start()
@@ -125,13 +117,12 @@ namespace FallingSand
         {
             if (world == null) return;
 
-            frameCount++;
-
             // Simulate physics (multithreaded) every frame
             // Gravity is applied at fixed interval (PhysicsSettings.GravityInterval)
             // clusterManager handles rigid body physics before cell simulation
             // beltManager applies horizontal force to clusters resting on belts
-            simulator.Simulate(world, clusterManager, beltManager);
+            // liftManager applies upward force to cells/clusters in lift zones
+            simulator.Simulate(world, clusterManager, beltManager, liftManager);
 
             // Simulate belt movement (Burst-compiled parallel job)
             JobHandle beltHandle = beltManager.ScheduleSimulateBelts(
@@ -141,16 +132,8 @@ namespace FallingSand
                 world.currentFrame);
             beltHandle.Complete();
 
-            // Upload texture changes
-            cellRenderer.UploadFullTexture();
-
-            // Log active chunks periodically
-            if (frameCount % 60 == 0)
-            {
-                int activeChunks = world.CountActiveChunks();
-                int totalChunks = world.chunksX * world.chunksY;
-                Debug.Log($"[Chunks] Active: {activeChunks}/{totalChunks} ({(activeChunks * 100f / totalChunks):F1}%)");
-            }
+            // Upload texture changes (only dirty chunks)
+            cellRenderer.UploadDirtyChunks();
         }
 
         /// <summary>
@@ -175,6 +158,7 @@ namespace FallingSand
                 instance = null;
             }
 
+            liftManager?.Dispose();
             beltManager?.Dispose();
             simulator?.Dispose();
             world?.Dispose();

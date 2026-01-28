@@ -62,17 +62,12 @@ namespace FallingSand.Graphics
                 bloomComponent.scatter.value = 0.7f;
 
                 postProcessVolume.profile = profile;
-                Debug.Log("[GraphicsManager] Created post-process volume with bloom");
                 return;
             }
 
             if (postProcessVolume.profile != null)
             {
                 postProcessVolume.profile.TryGet(out bloomComponent);
-                if (bloomComponent != null)
-                {
-                    Debug.Log("[GraphicsManager] Found bloom component in post-process volume");
-                }
             }
             else
             {
@@ -86,8 +81,6 @@ namespace FallingSand.Graphics
             RegisterEffect(new Effects.LightingEffect());
             RegisterEffect(new Effects.SoftEdgesEffect());
             RegisterEffect(new Effects.GlowEffect(this));
-
-            Debug.Log($"[GraphicsManager] Registered {effects.Count} graphics effects");
         }
 
         public void RegisterEffect(IGraphicsEffect effect)

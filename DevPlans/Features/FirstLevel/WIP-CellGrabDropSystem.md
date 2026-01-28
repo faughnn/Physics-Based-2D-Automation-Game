@@ -1,3 +1,5 @@
+**STATUS: COMPLETED** - Implemented 2026-01-25
+
 # Cell Grab & Drop System
 
 ## Summary
@@ -289,7 +291,7 @@ private void Update()
 
 ### Coordinate Conversion
 
-Reuse pattern from SandboxController:
+Use the centralized `CoordinateUtils` class (following SandboxController pattern):
 
 ```csharp
 private Vector2Int GetCellAtMouse()
@@ -297,14 +299,12 @@ private Vector2Int GetCellAtMouse()
     Vector2 mousePos = mouse.position.ReadValue();
     Vector3 mouseWorldPos = mainCamera.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0));
 
-    // Convert world position to cell coordinates
-    // Based on SandboxController's coordinate system
-    int cellX = Mathf.FloorToInt((mouseWorldPos.x + worldWidth) / 2f);
-    int cellY = Mathf.FloorToInt((worldHeight - mouseWorldPos.y) / 2f);
-
-    return new Vector2Int(cellX, cellY);
+    // Use centralized coordinate conversion
+    return CoordinateUtils.WorldToCell(mouseWorldPos, simulation.WorldWidth, simulation.WorldHeight);
 }
 ```
+
+**Note:** Access world dimensions via `SimulationManager.Instance` (`WorldWidth`, `WorldHeight`).
 
 ---
 

@@ -12,16 +12,19 @@ namespace FallingSand
     public class PlayerController : MonoBehaviour
     {
         [Header("Movement")]
-        [SerializeField] private float moveSpeed = 200f;      // world units/sec
+        [SerializeField] private float moveSpeed = 80f;       // world units/sec
         [SerializeField] private float jumpForce = 400f;      // impulse force
 
         [Header("Ground Check")]
-        [SerializeField] private float groundCheckDistance = 0.5f;
+        [SerializeField] private float groundCheckDistance = 2f;  // More forgiving for slopes
         [SerializeField] private LayerMask groundLayer = ~0;  // All layers by default
+        [SerializeField] private float coyoteTime = 0.15f;  // Grace period after leaving ground
 
         private Rigidbody2D rb;
         private BoxCollider2D boxCollider;
         private bool isGrounded;
+        private float lastGroundedTime;  // For coyote time
+        private bool isInLift;
 
         // Input
         private Keyboard keyboard;
@@ -51,8 +54,6 @@ namespace FallingSand
                 Debug.LogError("[PlayerController] No Rigidbody2D found!");
                 return;
             }
-
-            Debug.Log($"[PlayerController] Initialized. MoveSpeed: {moveSpeed}, JumpForce: {jumpForce}");
         }
 
         private void Update()
@@ -78,15 +79,30 @@ namespace FallingSand
             // Ground check using BoxCast
             CheckGrounded();
 
+            // Check for lift force
+            var simulation = SimulationManager.Instance;
+            if (simulation?.LiftManager != null)
+            {
+                isInLift = simulation.LiftManager.ApplyLiftForce(
+                    rb, simulation.World.width, simulation.World.height);
+            }
+            else
+            {
+                isInLift = false;
+            }
+
             // Horizontal movement
             Vector2 velocity = rb.linearVelocity;
             velocity.x = moveInput * moveSpeed;
             rb.linearVelocity = velocity;
 
-            // Jump (only when grounded)
-            if (jumpPressed && isGrounded)
+            // Jump (with coyote time - can jump shortly after leaving ground)
+            bool canJump = isGrounded || (Time.time - lastGroundedTime < coyoteTime);
+            if (jumpPressed && canJump)
             {
+                rb.linearVelocity = new Vector2(rb.linearVelocity.x, 0f);  // Reset vertical velocity
                 rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
+                lastGroundedTime = 0f;  // Prevent double jump during coyote time
             }
 
             // Reset jump flag
@@ -97,31 +113,64 @@ namespace FallingSand
         {
             if (boxCollider == null) return;
 
-            // BoxCast downward from the bottom of the collider
+            // Check for ground using OverlapBox below the player's feet
             Vector2 boxSize = boxCollider.size;
-            Vector2 origin = (Vector2)transform.position + boxCollider.offset;
-            origin.y -= boxSize.y * 0.5f;  // Start from bottom of collider
+            Vector2 feetPos = (Vector2)transform.position + boxCollider.offset;
+            feetPos.y -= boxSize.y * 0.5f + groundCheckDistance * 0.5f;
 
-            // Use a slightly smaller box for the cast
-            Vector2 castSize = new Vector2(boxSize.x * 0.9f, 0.1f);
+            // Wider box for better slope detection
+            Vector2 checkSize = new Vector2(boxSize.x * 1.1f, groundCheckDistance);
 
-            RaycastHit2D hit = Physics2D.BoxCast(
-                origin,
-                castSize,
-                0f,
-                Vector2.down,
-                groundCheckDistance,
-                groundLayer
-            );
+            // Get all overlapping colliders and find first non-player hit
+            Collider2D[] hits = Physics2D.OverlapBoxAll(feetPos, checkSize, 0f, groundLayer);
 
-            // Grounded if we hit something that isn't ourselves
-            isGrounded = hit.collider != null && hit.collider.gameObject != gameObject;
+            Collider2D groundHit = null;
+            foreach (var hit in hits)
+            {
+                if (hit.gameObject != gameObject)
+                {
+                    groundHit = hit;
+                    break;
+                }
+            }
+
+            isGrounded = groundHit != null;
+
+            // Track last grounded time for coyote time
+            if (isGrounded)
+            {
+                lastGroundedTime = Time.time;
+            }
         }
 
         /// <summary>
         /// Returns true if the player is currently on the ground.
         /// </summary>
         public bool IsGrounded => isGrounded;
+
+        /// <summary>
+        /// Returns true if the player is currently in a lift zone.
+        /// </summary>
+        public bool IsInLift => isInLift;
+
+        private void OnDrawGizmos()
+        {
+            if (boxCollider == null) return;
+
+            // Draw ground check area
+            Vector2 boxSize = boxCollider.size;
+            Vector2 feetPos = (Vector2)transform.position + boxCollider.offset;
+            feetPos.y -= boxSize.y * 0.5f + groundCheckDistance * 0.5f;
+            Vector2 checkSize = new Vector2(boxSize.x * 1.1f, groundCheckDistance);
+
+            bool canJump = isGrounded || (Time.time - lastGroundedTime < coyoteTime);
+            Gizmos.color = canJump ? Color.green : Color.red;
+            Gizmos.DrawWireCube(feetPos, checkSize);
+
+            // Draw player collider bounds
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawWireCube((Vector2)transform.position + boxCollider.offset, boxSize);
+        }
 
         /// <summary>
         /// Currently equipped (active) tool.
@@ -173,7 +222,6 @@ namespace FallingSand
 
             // Silently equip the new tool (replaces current)
             equippedTool = tool;
-            Debug.Log($"[PlayerController] Collected and equipped: {tool}");
             OnToolEquipped?.Invoke(tool);
         }
     }

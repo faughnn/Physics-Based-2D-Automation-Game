@@ -25,6 +25,10 @@ namespace FallingSand
         [ReadOnly]
         public NativeArray<MaterialDef> materials;
 
+        // Lift zone tiles for O(1) lookup (parallel array to cells)
+        [ReadOnly]
+        public NativeArray<LiftTile> liftTiles;
+
         // Chunk indices to process this pass
         [ReadOnly]
         public NativeArray<int> chunkIndices;
@@ -45,6 +49,7 @@ namespace FallingSand
         // Physics constants from PhysicsSettings (passed in because Burst can't access static fields)
         public int gravity;      // Gravity applied when accumulator overflows (usually 1)
         public int maxVelocity;  // Maximum velocity in cells/frame (usually 16)
+        public byte liftForce;   // Lift force (default 20, gravity is 17 so net is -3 upward)
 
         private const int ChunkSize = 64;
 
@@ -117,6 +122,17 @@ namespace FallingSand
             if (mat.behaviour == BehaviourType.Static)
                 return;
 
+            // Skip if moving upward and already processed this frame
+            // (upward movement goes against scan direction, causing multi-processing)
+            if (cell.velocityY < 0)
+            {
+                byte frameModulo = (byte)(currentFrame & 0xFF);
+                if (cell.frameUpdated == frameModulo)
+                    return;
+                cell.frameUpdated = frameModulo;
+                cells[index] = cell;
+            }
+
             // Simulate based on behaviour type
             switch (mat.behaviour)
             {
@@ -134,36 +150,146 @@ namespace FallingSand
 
         private void SimulatePowder(int x, int y, Cell cell, MaterialDef mat)
         {
-            // Apply gravity using fractional accumulation
-            // When accumulator overflows 255, increment velocity
-            byte oldFracY = cell.velocityFracY;
-            cell.velocityFracY += fractionalGravity;
-            if (cell.velocityFracY < oldFracY) // Overflow detected
+            // Check if in lift zone (only if lift tiles exist)
+            bool inLift = liftTiles.IsCreated && liftTiles[y * width + x].liftId != 0;
+
+            // Apply gravity with lift force opposition using fractional accumulation
+            // Gravity adds +17 per frame, lift subtracts 20, net is -3 (upward)
+            int netForce = fractionalGravity;
+            if (inLift)
+                netForce -= liftForce;
+
+            int newFracY = cell.velocityFracY + netForce;
+
+            if (newFracY >= 256)  // Overflow -> accelerate down
             {
+                cell.velocityFracY = (byte)(newFracY - 256);
                 cell.velocityY = (sbyte)math.min(cell.velocityY + gravity, maxVelocity);
             }
-
-            // Try to move down by velocity
-            int targetY = y + cell.velocityY;
-
-            // Trace path for collision
-            for (int checkY = y + 1; checkY <= targetY; checkY++)
+            else if (newFracY < 0)  // Underflow -> accelerate up
             {
-                if (!CanMoveTo(x, checkY, mat.density))
+                cell.velocityFracY = (byte)(newFracY + 256);
+                cell.velocityY = (sbyte)math.max(cell.velocityY - gravity, -maxVelocity);
+            }
+            else
+            {
+                cell.velocityFracY = (byte)newFracY;
+            }
+
+            // ===== PHASE 1: Vertical movement (down or up) =====
+            int targetY = y + cell.velocityY;
+            bool collided = false;
+
+            if (cell.velocityY > 0)
+            {
+                // Falling - trace path downward
+                for (int checkY = y + 1; checkY <= targetY; checkY++)
                 {
-                    targetY = checkY - 1;
-                    cell.velocityY = 0;
-                    break;
+                    if (!CanMoveTo(x, checkY, mat.density))
+                    {
+                        targetY = checkY - 1;
+                        collided = true;
+                        break;
+                    }
+                }
+
+                if (targetY > y)
+                {
+                    MoveCell(x, y, x, targetY, cell);
+                    return;
+                }
+            }
+            else if (cell.velocityY < 0)
+            {
+                // Rising (in lift) - trace path upward
+                for (int checkY = y - 1; checkY >= targetY; checkY--)
+                {
+                    if (!CanMoveTo(x, checkY, mat.density))
+                    {
+                        targetY = checkY + 1;
+                        collided = true;
+                        break;
+                    }
+                }
+
+                if (targetY < y)
+                {
+                    MoveCell(x, y, x, targetY, cell);
+                    return;
                 }
             }
 
-            if (targetY > y)
+            // On collision, transfer momentum to diagonal movement
+            if (collided && cell.velocityY > 1)
             {
-                MoveCell(x, y, x, targetY, cell);
-                return;
+                // Retain 70% of velocity
+                int remainingVelocity = cell.velocityY * 7 / 10;
+
+                if (remainingVelocity > 0)
+                {
+                    // Split into diagonal: ~71% for 45 degree decomposition (5/7 ≈ 0.714)
+                    int diagonalSpeed = remainingVelocity * 5 / 7;
+                    diagonalSpeed = math.max(1, diagonalSpeed);
+
+                    // Determine direction based on available slide
+                    bool canLeft = CanMoveTo(x - 1, y + 1, mat.density);
+                    bool canRight = CanMoveTo(x + 1, y + 1, mat.density);
+
+                    if (canLeft && canRight)
+                    {
+                        // Both available - use random direction
+                        uint hash = HashPosition(x, y, currentFrame);
+                        cell.velocityX = (sbyte)((hash & 1) == 0 ? -diagonalSpeed : diagonalSpeed);
+                    }
+                    else if (canLeft)
+                    {
+                        cell.velocityX = (sbyte)(-diagonalSpeed);
+                    }
+                    else if (canRight)
+                    {
+                        cell.velocityX = (sbyte)diagonalSpeed;
+                    }
+                    // else velocityX stays as-is (could be from previous frame)
+
+                    cell.velocityY = (sbyte)diagonalSpeed;
+                }
             }
 
-            // Can't fall straight - try diagonals
+            // ===== PHASE 2: Diagonal movement using velocityX =====
+            if (cell.velocityX != 0)
+            {
+                int dx = cell.velocityX > 0 ? 1 : -1;
+                int maxDiagonalDist = math.abs(cell.velocityX);
+
+                // Trace diagonal path
+                int diagonalDist = TraceDiagonalPath(x, y, dx, maxDiagonalDist, mat.density);
+
+                if (diagonalDist > 0)
+                {
+                    // Apply friction: 87.5% retention
+                    cell.velocityX = (sbyte)(cell.velocityX * 7 / 8);
+                    cell.velocityY = (sbyte)(cell.velocityY * 7 / 8);
+
+                    MoveCell(x, y, x + dx * diagonalDist, y + diagonalDist, cell);
+                    return;
+                }
+
+                // Blocked - try opposite direction
+                dx = -dx;
+                diagonalDist = TraceDiagonalPath(x, y, dx, maxDiagonalDist, mat.density);
+
+                if (diagonalDist > 0)
+                {
+                    // Reverse direction and apply friction
+                    cell.velocityX = (sbyte)(-cell.velocityX * 7 / 8);
+                    cell.velocityY = (sbyte)(cell.velocityY * 7 / 8);
+
+                    MoveCell(x, y, x + dx * diagonalDist, y + diagonalDist, cell);
+                    return;
+                }
+            }
+
+            // ===== PHASE 3: Fallback to simple slide =====
             // Check slide resistance: higher values = less likely to slide diagonally
             if (mat.slideResistance > 0)
             {
@@ -207,21 +333,50 @@ namespace FallingSand
             // Track if we were free-falling before this frame
             bool wasFreeFalling = cell.velocityY > 2;
 
-            // Apply gravity using fractional accumulation
-            // When accumulator overflows 255, increment velocity
-            byte oldFracY = cell.velocityFracY;
-            cell.velocityFracY += fractionalGravity;
-            if (cell.velocityFracY < oldFracY) // Overflow detected
+            // Check if in lift zone (only if lift tiles exist)
+            bool inLift = liftTiles.IsCreated && liftTiles[y * width + x].liftId != 0;
+
+            // Apply gravity with lift force opposition using fractional accumulation
+            int netForce = fractionalGravity;
+            if (inLift)
+                netForce -= liftForce;
+
+            int newFracY = cell.velocityFracY + netForce;
+
+            if (newFracY >= 256)  // Overflow -> accelerate down
             {
+                cell.velocityFracY = (byte)(newFracY - 256);
                 cell.velocityY = (sbyte)math.min(cell.velocityY + gravity, maxVelocity);
             }
+            else if (newFracY < 0)  // Underflow -> accelerate up
+            {
+                cell.velocityFracY = (byte)(newFracY + 256);
+                cell.velocityY = (sbyte)math.max(cell.velocityY - gravity, -maxVelocity);
+            }
+            else
+            {
+                cell.velocityFracY = (byte)newFracY;
+            }
 
-            // Try falling first
-            if (TryFall(x, y, cell, mat.density))
-                return;
+            // Try vertical movement based on velocity direction
+            if (cell.velocityY > 0)
+            {
+                // Falling
+                if (TryFall(x, y, cell, mat.density))
+                    return;
 
-            if (TryDiagonalFall(x, y, cell, mat.density))
-                return;
+                if (TryDiagonalFall(x, y, cell, mat.density))
+                    return;
+            }
+            else if (cell.velocityY < 0)
+            {
+                // Rising (in lift)
+                if (TryRise(x, y, cell, mat.density))
+                    return;
+
+                if (TryDiagonalRise(x, y, cell, mat.density))
+                    return;
+            }
 
             // Can't fall - convert vertical momentum to horizontal spread (Java-style)
             // Key insight: faster falling water should spread MORE, not less
@@ -303,6 +458,23 @@ namespace FallingSand
                 }
             }
             return bestDist;
+        }
+
+        // Trace diagonal path downward (45 degrees) - used for powder momentum
+        private int TraceDiagonalPath(int x, int y, int dx, int maxDistance, byte density)
+        {
+            int traveled = 0;
+            for (int dist = 1; dist <= maxDistance; dist++)
+            {
+                int targetX = x + dx * dist;
+                int targetY = y + dist;
+
+                if (!CanMoveTo(targetX, targetY, density))
+                    break;
+
+                traveled = dist;
+            }
+            return traveled;
         }
 
         // Simple hash for randomization (Burst-compatible)
@@ -419,6 +591,48 @@ namespace FallingSand
             return false;
         }
 
+        private bool TryRise(int x, int y, Cell cell, byte density)
+        {
+            int targetY = y + cell.velocityY;  // velocityY is negative, so this goes up
+
+            for (int checkY = y - 1; checkY >= targetY; checkY--)
+            {
+                if (!CanMoveTo(x, checkY, density))
+                {
+                    targetY = checkY + 1;
+                    break;
+                }
+            }
+
+            if (targetY < y)
+            {
+                MoveCell(x, y, x, targetY, cell);
+                return true;
+            }
+            return false;
+        }
+
+        private bool TryDiagonalRise(int x, int y, Cell cell, byte density)
+        {
+            bool tryLeftFirst = ((x + y + currentFrame) & 1) == 0;
+            int dx1 = tryLeftFirst ? -1 : 1;
+            int dx2 = tryLeftFirst ? 1 : -1;
+
+            if (CanMoveTo(x + dx1, y - 1, density))
+            {
+                MoveCell(x, y, x + dx1, y - 1, cell);
+                return true;
+            }
+
+            if (CanMoveTo(x + dx2, y - 1, density))
+            {
+                MoveCell(x, y, x + dx2, y - 1, cell);
+                return true;
+            }
+
+            return false;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool IsInBounds(int x, int y)
         {
@@ -451,10 +665,10 @@ namespace FallingSand
             if (target.materialId == Materials.Air)
                 return true;
 
-            // Can displace lighter materials (not static)
+            // Can displace lighter materials (not static, unless passable)
             MaterialDef targetMat = materials[target.materialId];
             if (targetMat.behaviour == BehaviourType.Static)
-                return false;
+                return (targetMat.flags & MaterialFlags.Passable) != 0;
 
             return myDensity > targetMat.density;
         }
@@ -466,9 +680,26 @@ namespace FallingSand
 
             Cell targetCell = cells[toIndex];
 
-            // Swap - target goes to source, source goes to target
-            cells[fromIndex] = targetCell;
+            // Place moving cell at destination
             cells[toIndex] = cell;
+
+            // Determine what to leave at source
+            if (liftTiles.IsCreated && liftTiles[fromIndex].liftId != 0)
+            {
+                // Source is a lift tile — restore lift material
+                cells[fromIndex] = new Cell { materialId = liftTiles[fromIndex].materialId };
+            }
+            else if (targetCell.materialId != Materials.Air &&
+                     (materials[targetCell.materialId].flags & MaterialFlags.Passable) != 0)
+            {
+                // Target was passable structure — don't scatter it, leave Air
+                cells[fromIndex] = default;
+            }
+            else
+            {
+                // Normal swap
+                cells[fromIndex] = targetCell;
+            }
 
             // Mark both positions dirty
             MarkDirtyInternal(fromX, fromY);

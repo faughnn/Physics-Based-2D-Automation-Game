@@ -138,10 +138,6 @@ namespace FallingSand
             clusters[cluster.clusterId] = cluster;
             TotalPixelCount += cluster.pixels.Count;
 
-            if (logClusterCreation)
-            {
-                Debug.Log($"[Cluster] Created #{cluster.clusterId} with {cluster.pixels.Count} pixels at {cluster.Position}");
-            }
         }
 
         /// <summary>
@@ -154,10 +150,6 @@ namespace FallingSand
                 TotalPixelCount -= cluster.pixels.Count;
                 ReleaseId(cluster.clusterId);
 
-                if (logClusterCreation)
-                {
-                    Debug.Log($"[Cluster] Destroyed #{cluster.clusterId}");
-                }
             }
         }
 
@@ -217,9 +209,9 @@ namespace FallingSand
 
                         if (cluster.lowVelocityFrames > 30)  // ~0.5 seconds at 60fps
                         {
-                            // Don't sleep if cluster is on a belt - belts need to keep moving it
-                            // Use cached isOnBelt flag (set by BeltManager BEFORE physics step)
-                            if (cluster.isOnBelt)
+                            // Don't sleep if cluster is on a belt or lift - they need to keep moving it
+                            // Use cached flags (set by BeltManager/LiftManager BEFORE physics step)
+                            if (cluster.isOnBelt || cluster.isOnLift)
                             {
                                 cluster.lowVelocityFrames = 0;
                                 continue;
@@ -386,20 +378,10 @@ namespace FallingSand
                 world.MarkDirty(newPos.x, newPos.y);
 
                 DisplacementsThisFrame++;
-
-                if (logDisplacements)
-                {
-                    Debug.Log($"[Cluster] Displaced cell {cell.materialId} from {fromPos} to {newPos}");
-                }
             }
             else
             {
                 // No space found within search radius - cell is lost
-                // This should be rare now with larger search radius
-                if (logDisplacements)
-                {
-                    Debug.LogWarning($"[Cluster] Cell {cell.materialId} at {fromPos} lost - no empty space found!");
-                }
             }
         }
 
