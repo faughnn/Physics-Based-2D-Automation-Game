@@ -11,5 +11,8 @@ namespace FallingSand
 
         /// <summary>Original lift material for restoration after a cell passes through</summary>
         public byte materialId;
+
+        /// <summary>True if this tile is underground (terrain not yet cleared)</summary>
+        public bool isGhost;
     }
 }

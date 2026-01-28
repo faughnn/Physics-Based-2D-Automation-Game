@@ -11,6 +11,16 @@ namespace FallingSand
     }
 
     /// <summary>
+    /// Result of placement validation: fully valid, valid but ghosted, or invalid.
+    /// </summary>
+    public enum PlacementResult
+    {
+        Valid,       // All cells are Air — place normally
+        ValidGhost,  // Some cells are soft terrain — place as ghost
+        Invalid,     // Hard material, out of bounds, or overlap
+    }
+
+    /// <summary>
     /// Handles structure placement in the Game scene.
     /// Checks progression unlocks before allowing placement.
     /// Attached to the Player GameObject.
@@ -22,6 +32,7 @@ namespace FallingSand
 
         [Header("Visual Feedback")]
         [SerializeField] private Color validPreviewColor = new Color(0f, 1f, 0f, 0.5f);
+        [SerializeField] private Color ghostPreviewColor = new Color(0.3f, 0.7f, 1f, 0.5f);
         [SerializeField] private Color invalidPreviewColor = new Color(1f, 0f, 0f, 0.5f);
 
         private SimulationManager simulation;
@@ -302,18 +313,25 @@ namespace FallingSand
             previewObject.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
 
             // Check if placement is valid
-            bool isValid = CanPlaceStructureAt(gridX, gridY);
-            previewRenderer.color = isValid ? validPreviewColor : invalidPreviewColor;
+            PlacementResult result = CanPlaceStructureAt(gridX, gridY);
+            previewRenderer.color = result switch
+            {
+                PlacementResult.Valid => validPreviewColor,
+                PlacementResult.ValidGhost => ghostPreviewColor,
+                _ => invalidPreviewColor,
+            };
         }
 
-        private bool CanPlaceStructureAt(int gridX, int gridY)
+        private PlacementResult CanPlaceStructureAt(int gridX, int gridY)
         {
             var world = simulation.World;
 
             // Check bounds
             if (!world.IsInBounds(gridX, gridY) ||
                 !world.IsInBounds(gridX + 7, gridY + 7))
-                return false;
+                return PlacementResult.Invalid;
+
+            bool anyGhost = false;
 
             // Check if area is clear
             for (int dy = 0; dy < 8; dy++)
@@ -325,19 +343,32 @@ namespace FallingSand
 
                     // Check for existing belt
                     if (simulation.BeltManager.HasBeltAt(cx, cy))
-                        return false;
+                        return PlacementResult.Invalid;
 
                     // Check for existing lift
                     if (simulation.LiftManager.HasLiftAt(cx, cy))
-                        return false;
+                        return PlacementResult.Invalid;
 
-                    // Check for non-air material
-                    if (world.GetCell(cx, cy) != Materials.Air)
-                        return false;
+                    byte mat = world.GetCell(cx, cy);
+                    if (mat == Materials.Air)
+                        continue;
+
+                    // Lift materials are allowed (for lift re-placement)
+                    if (Materials.IsLift(mat))
+                        continue;
+
+                    if (Materials.IsSoftTerrain(mat))
+                    {
+                        anyGhost = true;
+                        continue;
+                    }
+
+                    // Hard material — invalid
+                    return PlacementResult.Invalid;
                 }
             }
 
-            return true;
+            return anyGhost ? PlacementResult.ValidGhost : PlacementResult.Valid;
         }
 
         private void CreatePreviewObject()

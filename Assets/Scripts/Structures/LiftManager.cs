@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Unity.Collections;
 using UnityEngine;
 
@@ -27,6 +28,9 @@ namespace FallingSand
         // Next available lift ID
         private ushort nextLiftId = 1;
 
+        // Tracked ghost block origins (gridY * width + gridX) for O(1) iteration
+        private NativeHashSet<int> ghostBlockOrigins;
+
         // Default lift force (gravity is 17, so 20 gives net -3 upward)
         public const byte DefaultLiftForce = 20;
 
@@ -44,6 +48,7 @@ namespace FallingSand
             liftTiles = new NativeArray<LiftTile>(width * height, Allocator.Persistent);
             liftLookup = new NativeHashMap<ushort, LiftStructure>(initialCapacity, Allocator.Persistent);
             lifts = new NativeList<LiftStructure>(initialCapacity, Allocator.Persistent);
+            ghostBlockOrigins = new NativeHashSet<int>(initialCapacity, Allocator.Persistent);
         }
 
         /// <summary>
@@ -71,7 +76,8 @@ namespace FallingSand
                 !world.IsInBounds(gridX + LiftStructure.Width - 1, gridY + LiftStructure.Height - 1))
                 return false;
 
-            // Check if entire 8x8 area is clear (no existing lifts or solid materials)
+            // Check if entire 8x8 area is placeable (Air, lift materials, or soft terrain)
+            bool anyGhost = false;
             for (int dy = 0; dy < LiftStructure.Height; dy++)
             {
                 for (int dx = 0; dx < LiftStructure.Width; dx++)
@@ -85,9 +91,18 @@ namespace FallingSand
 
                     byte existingMaterial = world.GetCell(cx, cy);
                     // Allow Air or existing lift materials (for state recovery)
-                    if (existingMaterial != Materials.Air &&
-                        !Materials.IsLift(existingMaterial))
-                        return false;
+                    if (existingMaterial == Materials.Air ||
+                        Materials.IsLift(existingMaterial))
+                        continue;
+
+                    if (Materials.IsSoftTerrain(existingMaterial))
+                    {
+                        anyGhost = true;
+                        continue;
+                    }
+
+                    // Hard material (Stone, Wall, belt, etc.) — reject
+                    return false;
                 }
             }
 
@@ -198,12 +213,19 @@ namespace FallingSand
                     {
                         liftId = liftId,
                         materialId = liftMaterial,
+                        isGhost = anyGhost,
                     };
 
-                    world.SetCell(cx, cy, liftMaterial);
-                    world.MarkDirty(cx, cy);
+                    if (!anyGhost)
+                    {
+                        world.SetCell(cx, cy, liftMaterial);
+                        world.MarkDirty(cx, cy);
+                    }
                 }
             }
+
+            if (anyGhost)
+                ghostBlockOrigins.Add(gridY * width + gridX);
 
             // Mark chunks as having structure so they stay active
             MarkChunksHasStructure(gridX, gridY, LiftStructure.Width, LiftStructure.Height);
@@ -232,7 +254,8 @@ namespace FallingSand
             if (!liftLookup.TryGetValue(liftId, out LiftStructure lift))
                 return false;
 
-            // Clear the 8x8 area of lift tiles and reset materials to Air
+            // Clear the 8x8 area of lift tiles
+            bool tileIsGhost = tile.isGhost;
             LiftTile emptyTile = default;
             for (int dy = 0; dy < LiftStructure.Height; dy++)
             {
@@ -243,10 +266,18 @@ namespace FallingSand
                     int cellPosKey = cy * width + cx;
 
                     liftTiles[cellPosKey] = emptyTile;
-                    world.SetCell(cx, cy, Materials.Air);
-                    world.MarkDirty(cx, cy);
+
+                    if (!tileIsGhost)
+                    {
+                        // Only clear cell material for non-ghost tiles (ghost tiles have terrain)
+                        world.SetCell(cx, cy, Materials.Air);
+                        world.MarkDirty(cx, cy);
+                    }
                 }
             }
+
+            if (tileIsGhost)
+                ghostBlockOrigins.Remove(gridY * width + gridX);
 
             // Handle lift splitting
             bool hasTopPart = lift.minY < gridY;
@@ -406,7 +437,7 @@ namespace FallingSand
         }
 
         /// <summary>
-        /// Checks if a cell position is within the given lift's zone.
+        /// Checks if a cell position is within the given lift's zone and not ghost.
         /// </summary>
         private bool PositionInLiftZone(Vector2 cellPos, LiftStructure lift)
         {
@@ -415,8 +446,21 @@ namespace FallingSand
             int liftMinY = lift.minY;
             int liftMaxY = lift.maxY + LiftStructure.Height;
 
-            return cellPos.x >= liftMinX && cellPos.x < liftMaxX &&
-                   cellPos.y >= liftMinY && cellPos.y < liftMaxY;
+            if (cellPos.x < liftMinX || cellPos.x >= liftMaxX ||
+                cellPos.y < liftMinY || cellPos.y >= liftMaxY)
+                return false;
+
+            // Check if the tile at this position is ghost
+            int cx = Mathf.FloorToInt(cellPos.x);
+            int cy = Mathf.FloorToInt(cellPos.y);
+            if (cx >= 0 && cx < width && cy >= 0 && cy < height)
+            {
+                LiftTile tile = liftTiles[cy * width + cx];
+                if (tile.isGhost)
+                    return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -571,11 +615,95 @@ namespace FallingSand
             world.chunks[chunkIndex] = chunk;
         }
 
+        /// <summary>
+        /// Checks all ghost lift tiles and activates blocks where terrain has been cleared.
+        /// A ghost lift block activates when no Ground cells remain (powder/liquid is OK since
+        /// lifts are hollow force zones — those materials will be pushed through).
+        /// </summary>
+        public void UpdateGhostStates()
+        {
+            if (ghostBlockOrigins.Count == 0) return;
+
+            // Copy to temp array so we can modify the set while iterating
+            var blockKeys = ghostBlockOrigins.ToNativeArray(Allocator.Temp);
+
+            for (int b = 0; b < blockKeys.Length; b++)
+            {
+                int blockKey = blockKeys[b];
+                int gridY = blockKey / width;
+                int gridX = blockKey % width;
+
+                // Check that no Static terrain (Ground) remains in the block.
+                // Powder (Sand, Dirt) and Liquid (Water) are allowed — lifts push them through.
+                bool hasBlockingTerrain = false;
+                for (int dy = 0; dy < LiftStructure.Height && !hasBlockingTerrain; dy++)
+                {
+                    for (int dx = 0; dx < LiftStructure.Width && !hasBlockingTerrain; dx++)
+                    {
+                        byte mat = world.GetCell(gridX + dx, gridY + dy);
+                        if (mat == Materials.Ground)
+                            hasBlockingTerrain = true;
+                    }
+                }
+
+                if (hasBlockingTerrain) continue;
+
+                // Activate: clear ghost, write lift material only to Air cells
+                for (int dy = 0; dy < LiftStructure.Height; dy++)
+                {
+                    for (int dx = 0; dx < LiftStructure.Width; dx++)
+                    {
+                        int cx = gridX + dx;
+                        int cy = gridY + dy;
+                        int posKey = cy * width + cx;
+
+                        LiftTile updated = liftTiles[posKey];
+                        updated.isGhost = false;
+                        liftTiles[posKey] = updated;
+
+                        // Only write lift material to Air cells — leave powder/liquid in place
+                        // (MoveCell in SimulateChunksJob restores lift material when they move out)
+                        byte existingMat = world.GetCell(cx, cy);
+                        if (existingMat == Materials.Air)
+                        {
+                            world.SetCell(cx, cy, updated.materialId);
+                        }
+
+                        world.MarkDirty(cx, cy);
+                    }
+                }
+
+                // Remove from tracked ghost set
+                ghostBlockOrigins.Remove(blockKey);
+            }
+
+            blockKeys.Dispose();
+        }
+
+        /// <summary>
+        /// Populates a list with grid-snapped positions of all ghost lift blocks.
+        /// </summary>
+        public void GetGhostBlockPositions(List<Vector2Int> positions)
+        {
+            if (ghostBlockOrigins.Count == 0) return;
+
+            var keys = ghostBlockOrigins.ToNativeArray(Allocator.Temp);
+            for (int i = 0; i < keys.Length; i++)
+            {
+                int blockKey = keys[i];
+                int gridY = blockKey / width;
+                int gridX = blockKey % width;
+                positions.Add(new Vector2Int(gridX, gridY));
+            }
+            keys.Dispose();
+        }
+
         public void Dispose()
         {
             if (liftTiles.IsCreated) liftTiles.Dispose();
             if (liftLookup.IsCreated) liftLookup.Dispose();
             if (lifts.IsCreated) lifts.Dispose();
+            if (ghostBlockOrigins.IsCreated) ghostBlockOrigins.Dispose();
         }
     }
 }

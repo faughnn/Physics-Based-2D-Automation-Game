@@ -21,6 +21,7 @@ namespace FallingSand
         private BeltManager beltManager;
         private LiftManager liftManager;
         private CellRenderer cellRenderer;
+        private GhostStructureRenderer ghostRenderer;
 
         // Singleton instance
         private static SimulationManager instance;
@@ -99,6 +100,11 @@ namespace FallingSand
             cellRenderer = rendererObj.AddComponent<CellRenderer>();
             cellRenderer.Initialize(world);
 
+            // Create ghost structure renderer (overlays for underground structures)
+            GameObject ghostObj = new GameObject("GhostStructureRenderer");
+            ghostRenderer = ghostObj.AddComponent<GhostStructureRenderer>();
+            ghostRenderer.Initialize(beltManager, liftManager, worldWidth, worldHeight);
+
             // Create graphics manager (handles visual effects)
             GameObject graphicsObj = new GameObject("GraphicsManager");
             graphicsObj.AddComponent<FallingSand.Graphics.GraphicsManager>();
@@ -116,6 +122,10 @@ namespace FallingSand
         private void Update()
         {
             if (world == null) return;
+
+            // Activate ghost structures whose terrain has been cleared
+            beltManager.UpdateGhostStates();
+            liftManager.UpdateGhostStates();
 
             // Simulate physics (multithreaded) every frame
             // Gravity is applied at fixed interval (PhysicsSettings.GravityInterval)

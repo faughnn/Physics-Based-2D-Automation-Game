@@ -99,6 +99,18 @@ namespace FallingSand
             return (mat.flags & MaterialFlags.Diggable) != 0;
         }
 
+        /// <summary>
+        /// Checks if a material is soft terrain that structures can ghost through.
+        /// Includes diggable static (Ground), powders (Sand, Dirt), and liquids (Water).
+        /// </summary>
+        public static bool IsSoftTerrain(byte materialId)
+        {
+            return materialId == Ground ||
+                   materialId == Dirt ||
+                   materialId == Sand ||
+                   materialId == Water;
+        }
+
         public static MaterialDef[] CreateDefaults()
         {
             var defs = new MaterialDef[Count];

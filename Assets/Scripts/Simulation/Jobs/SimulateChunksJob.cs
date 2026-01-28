@@ -150,8 +150,13 @@ namespace FallingSand
 
         private void SimulatePowder(int x, int y, Cell cell, MaterialDef mat)
         {
-            // Check if in lift zone (only if lift tiles exist)
-            bool inLift = liftTiles.IsCreated && liftTiles[y * width + x].liftId != 0;
+            // Check if in lift zone (only if lift tiles exist and tile is not ghost)
+            bool inLift = false;
+            if (liftTiles.IsCreated)
+            {
+                var lt = liftTiles[y * width + x];
+                inLift = lt.liftId != 0 && !lt.isGhost;
+            }
 
             // Apply gravity with lift force opposition using fractional accumulation
             // Gravity adds +17 per frame, lift subtracts 20, net is -3 (upward)
@@ -333,8 +338,13 @@ namespace FallingSand
             // Track if we were free-falling before this frame
             bool wasFreeFalling = cell.velocityY > 2;
 
-            // Check if in lift zone (only if lift tiles exist)
-            bool inLift = liftTiles.IsCreated && liftTiles[y * width + x].liftId != 0;
+            // Check if in lift zone (only if lift tiles exist and tile is not ghost)
+            bool inLift = false;
+            if (liftTiles.IsCreated)
+            {
+                var lt = liftTiles[y * width + x];
+                inLift = lt.liftId != 0 && !lt.isGhost;
+            }
 
             // Apply gravity with lift force opposition using fractional accumulation
             int netForce = fractionalGravity;
@@ -684,7 +694,7 @@ namespace FallingSand
             cells[toIndex] = cell;
 
             // Determine what to leave at source
-            if (liftTiles.IsCreated && liftTiles[fromIndex].liftId != 0)
+            if (liftTiles.IsCreated && liftTiles[fromIndex].liftId != 0 && !liftTiles[fromIndex].isGhost)
             {
                 // Source is a lift tile — restore lift material
                 cells[fromIndex] = new Cell { materialId = liftTiles[fromIndex].materialId };

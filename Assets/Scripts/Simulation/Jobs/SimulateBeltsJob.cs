@@ -24,6 +24,9 @@ namespace FallingSand
         [ReadOnly]
         public NativeArray<BeltStructure> belts;
 
+        [ReadOnly]
+        public NativeHashMap<int, BeltTile> beltTiles;
+
         public int width;
         public int height;
         public int chunksX;
@@ -79,6 +82,15 @@ namespace FallingSand
         {
             if (x < 0 || x >= width)
                 return;
+
+            // Skip ghost belt tiles (they shouldn't transport materials)
+            int beltRowY = surfaceY + 1; // First row of belt block
+            if (beltTiles.IsCreated)
+            {
+                int tileKey = beltRowY * width + x;
+                if (beltTiles.TryGetValue(tileKey, out BeltTile bt) && bt.isGhost)
+                    return;
+            }
 
             int targetX = x + direction;
             if (targetX < 0 || targetX >= width)

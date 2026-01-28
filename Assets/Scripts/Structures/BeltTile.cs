@@ -11,5 +11,8 @@ namespace FallingSand
 
         /// <summary>Which BeltStructure this tile belongs to</summary>
         public ushort beltId;
+
+        /// <summary>True if this tile is underground (terrain not yet cleared)</summary>
+        public bool isGhost;
     }
 }

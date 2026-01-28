@@ -62,9 +62,12 @@ File: `Assets/Scripts/Structures/LiftTile.cs`
 public struct LiftTile
 {
     public ushort liftId;
-    public bool isGhost;    // NEW: true if blocked by terrain
+    public byte materialId;  // EXISTING: lift material for MoveCell() restore
+    public bool isGhost;     // NEW: true if blocked by terrain
 }
 ```
+
+The `materialId` field already exists -- it's used by `SimulateChunksJob.MoveCell()` to restore lift material when cells move out of lift zones. Ghost lift activation sets this field so the restore mechanism works immediately after activation.
 
 Note: There is no unified `StructureTile` -- belts and lifts use separate tile types with different storage (BeltTile in `NativeHashMap<int, BeltTile>`, LiftTile in `NativeArray<LiftTile>`).
 
@@ -370,7 +373,38 @@ if (noGround)
     ActivateGhostBlock(blockX, blockY, liftId);
 ```
 
-On lift activation, write lift materials to cells. Any loose powder/liquid already in those cells gets overwritten with lift material -- but since lifts are passable (density 0), new falling material will immediately pass through. The small amount of material lost (whatever was in those exact cells at activation time) is negligible.
+On lift activation, only write lift materials to cells that are currently Air. Leave Dirt/Sand/Water cells untouched. The existing `MoveCell()` mechanism in `SimulateChunksJob.cs:687-691` handles the rest: when a cell moves out of a lift tile position, it checks `liftTiles[fromIndex].liftId != 0` and restores the lift material from `liftTiles[fromIndex].materialId`. This is the same mechanism that already handles dirt passing through active lifts during normal gameplay -- no material is destroyed.
+
+```csharp
+private void ActivateGhostBlock(int blockX, int blockY, ushort liftId)
+{
+    for (int dy = 0; dy < LiftStructure.Height; dy++)
+    {
+        for (int dx = 0; dx < LiftStructure.Width; dx++)
+        {
+            int cx = blockX + dx;
+            int cy = blockY + dy;
+            int posKey = cy * width + cx;
+
+            // Update tile: clear ghost, store the lift material for MoveCell restore
+            byte liftMaterial = GetLiftMaterialForPattern(cx, cy);
+            var tile = liftTiles[posKey];
+            tile.isGhost = false;
+            tile.materialId = liftMaterial;
+            liftTiles[posKey] = tile;
+
+            // Only write lift material to empty cells
+            // Occupied cells (Dirt, Sand, Water) keep their material —
+            // when they move out, MoveCell() auto-restores lift material from liftTiles.materialId
+            if (world.GetCell(cx, cy) == Materials.Air)
+            {
+                world.SetCell(cx, cy, liftMaterial);
+            }
+
+            world.MarkDirty(cx, cy);
+        }
+    }
+}
 
 ## Rendering Ghost Structures
 
@@ -438,6 +472,9 @@ Example: Active belt at X=0, ghost belt placed at X=8 in ground. They merge into
 ### Dirt Falls Into Ghost Belt Area
 Belt stays ghost (non-passable, needs Air). Player must dig/grab the loose dirt for the belt to activate. This is intentional -- belts are solid structures that need clear space.
 
+### Dirt Present When Ghost Lift Activates
+Not a problem. On activation, lift material is only written to Air cells. Dirt cells keep their material, but `liftTiles` is set to active, so the simulation applies lift force. When dirt moves out, `MoveCell()` auto-restores lift material from `liftTiles.materialId`. Same mechanism as normal lift operation -- no material lost.
+
 ### Player Digs Under Ghost Belt
 Ghost belt in ground. Player digs below it. Ground under the belt is gone, but ground IN the belt remains. Player then digs the belt area itself. Belt activates (all cells now Air), floating in space. Normal behavior -- structures don't require support.
 
@@ -458,6 +495,7 @@ Standard bounds checking applies. If any part of the 8x8 block is out of bounds,
 - [ ] Ghost lift renders as faded semi-transparent overlay
 - [ ] Ghost belt activates when all cells become Air
 - [ ] Ghost lift activates when all Ground cells are removed (powder OK)
+- [ ] Dirt present during lift activation is not destroyed (lift force applies, MoveCell restores lift material)
 - [ ] On activation, structure materials are written to cells correctly
 - [ ] Belt structureId is set on activation
 - [ ] Ghost structures can be removed with right-click

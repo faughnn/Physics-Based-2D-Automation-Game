@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
@@ -26,6 +27,9 @@ namespace FallingSand
         // Next available belt ID
         private ushort nextBeltId = 1;
 
+        // Tracked ghost block origins (gridY * width + gridX) for O(1) iteration
+        private NativeHashSet<int> ghostBlockOrigins;
+
         // Default belt speed (frames per move)
         public const byte DefaultSpeed = 3;
 
@@ -41,6 +45,7 @@ namespace FallingSand
             beltTiles = new NativeHashMap<int, BeltTile>(initialCapacity * 64, Allocator.Persistent);
             beltLookup = new NativeHashMap<ushort, BeltStructure>(initialCapacity, Allocator.Persistent);
             belts = new NativeList<BeltStructure>(initialCapacity, Allocator.Persistent);
+            ghostBlockOrigins = new NativeHashSet<int>(initialCapacity, Allocator.Persistent);
         }
 
         /// <summary>
@@ -73,7 +78,8 @@ namespace FallingSand
                 !world.IsInBounds(gridX + BeltStructure.Width - 1, gridY + BeltStructure.Height - 1))
                 return false;
 
-            // Check if entire 8x8 area is clear (all Air, no existing belts)
+            // Check if entire 8x8 area is placeable (Air or soft terrain)
+            bool anyGhost = false;
             for (int dy = 0; dy < BeltStructure.Height; dy++)
             {
                 for (int dx = 0; dx < BeltStructure.Width; dx++)
@@ -86,8 +92,17 @@ namespace FallingSand
                         return false;
 
                     byte existingMaterial = world.GetCell(cx, cy);
-                    if (existingMaterial != Materials.Air)
-                        return false;
+                    if (existingMaterial == Materials.Air)
+                        continue;
+
+                    if (Materials.IsSoftTerrain(existingMaterial))
+                    {
+                        anyGhost = true;
+                        continue;
+                    }
+
+                    // Hard material (Stone, Wall, belt, lift, etc.) — reject
+                    return false;
                 }
             }
 
@@ -193,6 +208,7 @@ namespace FallingSand
             {
                 direction = direction,
                 beltId = beltId,
+                isGhost = anyGhost,
             };
 
             for (int dy = 0; dy < BeltStructure.Height; dy++)
@@ -205,16 +221,22 @@ namespace FallingSand
 
                     beltTiles.Add(posKey, tile);
 
-                    // Update the cell grid with chevron pattern
-                    int cellIndex = cy * width + cx;
-                    Cell cell = world.cells[cellIndex];
-                    cell.materialId = GetBeltMaterialForChevron(cx, cy, direction);
-                    cell.structureId = (byte)StructureType.Belt;
-                    world.cells[cellIndex] = cell;
+                    if (!anyGhost)
+                    {
+                        // Update the cell grid with chevron pattern
+                        int cellIndex = cy * width + cx;
+                        Cell cell = world.cells[cellIndex];
+                        cell.materialId = GetBeltMaterialForChevron(cx, cy, direction);
+                        cell.structureId = (byte)StructureType.Belt;
+                        world.cells[cellIndex] = cell;
 
-                    world.MarkDirty(cx, cy);
+                        world.MarkDirty(cx, cy);
+                    }
                 }
             }
+
+            if (anyGhost)
+                ghostBlockOrigins.Add(gridY * width + gridX);
 
             // Mark all affected chunks as having a structure
             MarkChunksHasStructure(gridX, gridY, BeltStructure.Width, BeltStructure.Height);
@@ -243,6 +265,7 @@ namespace FallingSand
                 return false;
 
             // Clear the 8x8 area
+            bool tileIsGhost = tile.isGhost;
             for (int dy = 0; dy < BeltStructure.Height; dy++)
             {
                 for (int dx = 0; dx < BeltStructure.Width; dx++)
@@ -253,16 +276,22 @@ namespace FallingSand
 
                     beltTiles.Remove(cellPosKey);
 
-                    // Clear the cell
-                    int cellIndex = cy * width + cx;
-                    Cell cell = world.cells[cellIndex];
-                    cell.materialId = Materials.Air;
-                    cell.structureId = (byte)StructureType.None;
-                    world.cells[cellIndex] = cell;
+                    if (!tileIsGhost)
+                    {
+                        // Clear the cell (ghost tiles have no cell data to clear)
+                        int cellIndex = cy * width + cx;
+                        Cell cell = world.cells[cellIndex];
+                        cell.materialId = Materials.Air;
+                        cell.structureId = (byte)StructureType.None;
+                        world.cells[cellIndex] = cell;
 
-                    world.MarkDirty(cx, cy);
+                        world.MarkDirty(cx, cy);
+                    }
                 }
             }
+
+            if (tileIsGhost)
+                ghostBlockOrigins.Remove(gridY * width + gridX);
 
             // Handle belt splitting
             bool hasLeftPart = belt.minX < gridX;
@@ -438,6 +467,7 @@ namespace FallingSand
                 chunks = chunks,
                 materials = materials,
                 belts = belts.AsArray(),
+                beltTiles = beltTiles,
                 width = width,
                 height = height,
                 chunksX = chunksX,
@@ -537,12 +567,6 @@ namespace FallingSand
 
         private void UpdateBeltTileIds(int minX, int maxX, int y, ushort newBeltId, sbyte direction)
         {
-            BeltTile newTile = new BeltTile
-            {
-                direction = direction,
-                beltId = newBeltId,
-            };
-
             for (int dy = 0; dy < BeltStructure.Height; dy++)
             {
                 for (int cx = minX; cx <= maxX; cx++)
@@ -550,10 +574,13 @@ namespace FallingSand
                     int cy = y + dy;
                     int posKey = cy * width + cx;
 
-                    if (beltTiles.ContainsKey(posKey))
+                    if (beltTiles.TryGetValue(posKey, out BeltTile existing))
                     {
+                        existing.direction = direction;
+                        existing.beltId = newBeltId;
+                        // Preserve isGhost state
                         beltTiles.Remove(posKey);
-                        beltTiles.Add(posKey, newTile);
+                        beltTiles.Add(posKey, existing);
                     }
                 }
             }
@@ -729,6 +756,12 @@ namespace FallingSand
                 if (cellPos.y == surfaceY &&
                     cellPos.x >= beltMinX && cellPos.x < beltMaxX)
                 {
+                    // Check that the belt tile directly below (on the belt surface row) is not ghost
+                    int belTileY = surfaceY + 1; // First row of the belt block
+                    int tileKey = belTileY * width + cellPos.x;
+                    if (beltTiles.TryGetValue(tileKey, out BeltTile bt) && bt.isGhost)
+                        continue; // Ghost tile — skip this pixel
+
                     return true;
                 }
             }
@@ -736,11 +769,106 @@ namespace FallingSand
             return false;
         }
 
+        /// <summary>
+        /// Checks all ghost belt tiles and activates blocks where terrain has been fully cleared.
+        /// A ghost block activates when all 64 cells in its 8x8 area are Air.
+        /// </summary>
+        public void UpdateGhostStates()
+        {
+            if (ghostBlockOrigins.Count == 0) return;
+
+            // Copy to temp array so we can modify the set while iterating
+            var blockKeys = ghostBlockOrigins.ToNativeArray(Allocator.Temp);
+
+            for (int b = 0; b < blockKeys.Length; b++)
+            {
+                int blockKey = blockKeys[b];
+                int gridY = blockKey / width;
+                int gridX = blockKey % width;
+
+                // Check if ALL 64 cells are Air
+                bool allAir = true;
+                for (int dy = 0; dy < BeltStructure.Height && allAir; dy++)
+                {
+                    for (int dx = 0; dx < BeltStructure.Width && allAir; dx++)
+                    {
+                        byte mat = world.GetCell(gridX + dx, gridY + dy);
+                        if (mat != Materials.Air)
+                            allAir = false;
+                    }
+                }
+
+                if (!allAir) continue;
+
+                // Activate: get tile info from first cell in block
+                int firstKey = gridY * width + gridX;
+                if (!beltTiles.TryGetValue(firstKey, out BeltTile firstTile))
+                    continue;
+
+                sbyte direction = firstTile.direction;
+
+                // Write belt material to cells and clear ghost flag
+                for (int dy = 0; dy < BeltStructure.Height; dy++)
+                {
+                    for (int dx = 0; dx < BeltStructure.Width; dx++)
+                    {
+                        int cx = gridX + dx;
+                        int cy = gridY + dy;
+                        int posKey = cy * width + cx;
+
+                        // Update tile: clear ghost
+                        BeltTile updated = beltTiles[posKey];
+                        updated.isGhost = false;
+                        beltTiles.Remove(posKey);
+                        beltTiles.Add(posKey, updated);
+
+                        // Write belt material to cell
+                        int cellIndex = cy * width + cx;
+                        Cell cell = world.cells[cellIndex];
+                        cell.materialId = GetBeltMaterialForChevron(cx, cy, direction);
+                        cell.structureId = (byte)StructureType.Belt;
+                        world.cells[cellIndex] = cell;
+
+                        world.MarkDirty(cx, cy);
+                    }
+                }
+
+                // Remove from tracked ghost set
+                ghostBlockOrigins.Remove(blockKey);
+            }
+
+            blockKeys.Dispose();
+        }
+
+        /// <summary>
+        /// Populates a list with grid-snapped positions of all ghost belt blocks.
+        /// </summary>
+        public void GetGhostBlockPositions(List<Vector2Int> positions)
+        {
+            if (ghostBlockOrigins.Count == 0) return;
+
+            var keys = ghostBlockOrigins.ToNativeArray(Allocator.Temp);
+            for (int i = 0; i < keys.Length; i++)
+            {
+                int blockKey = keys[i];
+                int gridY = blockKey / width;
+                int gridX = blockKey % width;
+                positions.Add(new Vector2Int(gridX, gridY));
+            }
+            keys.Dispose();
+        }
+
+        /// <summary>
+        /// Gets the native belt tiles map for use in Burst jobs.
+        /// </summary>
+        public NativeHashMap<int, BeltTile> GetBeltTiles() => beltTiles;
+
         public void Dispose()
         {
             if (beltTiles.IsCreated) beltTiles.Dispose();
             if (beltLookup.IsCreated) beltLookup.Dispose();
             if (belts.IsCreated) belts.Dispose();
+            if (ghostBlockOrigins.IsCreated) ghostBlockOrigins.Dispose();
         }
     }
 }
