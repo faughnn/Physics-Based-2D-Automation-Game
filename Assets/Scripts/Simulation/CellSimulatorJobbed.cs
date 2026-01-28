@@ -22,6 +22,16 @@ namespace FallingSand
         public float LastSimulationTimeMs { get; private set; }
         public int LastActiveChunkCount { get; private set; }
 
+        // Current lift manager (stored temporarily during Simulate for ScheduleGroup access)
+        private LiftManager currentLiftManager;
+
+        // Physics time accumulator for frame-rate-independent cluster/player physics.
+        // Cell simulation is intentionally frame-count-based (Noita-style), but Unity
+        // Physics2D (player, clusters) must step at a fixed rate so movement speed
+        // doesn't scale with display FPS.
+        private float physicsAccumulator;
+        private const float MaxAccumulatedTime = 0.1f; // Cap to prevent spiral-of-death
+
         public CellSimulatorJobbed()
         {
             // Pre-allocate with reasonable capacity
@@ -39,27 +49,39 @@ namespace FallingSand
         /// <param name="world">The cell world to simulate</param>
         /// <param name="clusterManager">Optional cluster manager for rigid body physics</param>
         /// <param name="beltManager">Optional belt manager for belt-cluster interaction</param>
-        public void Simulate(CellWorld world, ClusterManager clusterManager = null, BeltManager beltManager = null)
+        /// <param name="liftManager">Optional lift manager for lift-cluster interaction and lift zones</param>
+        public void Simulate(CellWorld world, ClusterManager clusterManager = null, BeltManager beltManager = null, LiftManager liftManager = null)
         {
             stopwatch.Restart();
 
             world.currentFrame++;
 
-            // ========== BELT FORCES (apply before physics step) ==========
-            // Apply horizontal force to clusters resting on belts
-            if (beltManager != null && clusterManager != null)
-            {
-                beltManager.ApplyForcesToClusters(clusterManager, world.width, world.height);
-            }
-
-            // ========== CLUSTER PHYSICS (runs before cell simulation) ==========
-            // Step 1: Clear old cluster pixels from grid
-            // Step 2: Step Unity physics (Physics2D.Simulate)
-            // Step 3: Sync cluster pixels to grid at new positions
+            // ========== CLUSTER PHYSICS (fixed-rate, decoupled from display frame rate) ==========
+            // Cell simulation is frame-count-based (runs once per display frame), but
+            // Unity Physics2D must step at a fixed rate so player/cluster movement
+            // speed doesn't scale with FPS.
             if (clusterManager != null)
             {
-                clusterManager.StepAndSync(UnityEngine.Time.fixedDeltaTime);
+                physicsAccumulator += UnityEngine.Time.deltaTime;
+                if (physicsAccumulator > MaxAccumulatedTime)
+                    physicsAccumulator = MaxAccumulatedTime;
+
+                float fixedStep = UnityEngine.Time.fixedDeltaTime;
+                while (physicsAccumulator >= fixedStep)
+                {
+                    // Apply belt/lift forces each physics step
+                    if (beltManager != null)
+                        beltManager.ApplyForcesToClusters(clusterManager, world.width, world.height);
+                    if (liftManager != null)
+                        liftManager.ApplyForcesToClusters(clusterManager, world.width, world.height);
+
+                    clusterManager.StepAndSync(fixedStep);
+                    physicsAccumulator -= fixedStep;
+                }
             }
+
+            // Store liftManager reference for ScheduleGroup
+            currentLiftManager = liftManager;
 
             // ========== CELL SIMULATION ==========
             // Collect active chunks into groups
@@ -97,6 +119,7 @@ namespace FallingSand
                 cells = world.cells,
                 chunks = world.chunks,
                 materials = world.materials,
+                liftTiles = currentLiftManager?.LiftTiles ?? default,
                 chunkIndices = chunkIndices.AsArray(),
                 width = world.width,
                 height = world.height,
@@ -106,6 +129,7 @@ namespace FallingSand
                 fractionalGravity = PhysicsSettings.FractionalGravity,
                 gravity = PhysicsSettings.CellGravityAccel,
                 maxVelocity = PhysicsSettings.MaxVelocity,
+                liftForce = PhysicsSettings.LiftForce,
             };
 
             // innerLoopBatchCount = 1 means each chunk is processed by one thread
