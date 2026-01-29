@@ -139,3 +139,99 @@ When requested to log a bug, create a markdown file in `G:\Sandy\DevPlans\Bugs\`
 - `REJECTED-BugName.md` - Not a bug, or won't fix
 
 **After implementing a fix or working on a bug/feature, rename the file to reflect its new status** (e.g., `OPEN-BugName.md` → `FIXED-BugName.md`).
+
+---
+
+## Coordinate System
+
+The codebase uses two coordinate systems:
+
+**Cell Grid (Simulation)**
+- Origin `(0,0)` at **top-left**
+- **Y+ = down** (row 0 is top, row N is bottom)
+- Integer coordinates
+- Used by: cell simulation, materials, structures
+
+**Unity World (Rendering/Physics)**
+- Origin `(0,0)` at **center**
+- **Y+ = up** (standard Unity)
+- Float coordinates
+- Used by: Unity transforms, Physics2D, camera
+
+**Conversion (`CoordinateUtils.cs`)**
+- `CellToWorldScale = 2` — each cell is 2×2 world units
+- `CellToWorld(cellX, cellY)` — convert cell → world
+- `WorldToCell(worldPos)` — convert world → cell (floor)
+- `WorldToCellRounded(worldPos)` — convert world → cell (nearest)
+
+**Key formulas:**
+```
+worldX = cellX * 2 - worldWidth
+worldY = worldHeight - cellY * 2
+```
+
+---
+
+## Material System
+
+Materials define how cells behave and render. Each cell stores a `materialId` (byte) indexing into the material definitions array.
+
+**Key files:**
+- `MaterialDef.cs` — struct definition and `Materials` static class
+
+**Behaviour Types (`BehaviourType`):**
+| Type | Movement |
+|------|----------|
+| `Static` | Never moves (stone, structures) |
+| `Powder` | Falls, piles diagonally (sand, dirt) |
+| `Liquid` | Falls, spreads horizontally (water, oil) |
+| `Gas` | Rises, disperses (steam, smoke) |
+
+**Material Flags (`MaterialFlags`):**
+- `Diggable` — can be excavated by player
+- `Passable` — cells/physics can pass through (used by lifts)
+- `Flammable`, `ConductsHeat`, `Conductive`, `Corrodes` — future use
+
+**Key Materials:**
+| ID | Name | Behaviour | Notes |
+|----|------|-----------|-------|
+| 0 | Air | Static | Empty space |
+| 1 | Stone | Static | Immovable solid |
+| 2 | Sand | Powder | Standard falling sand |
+| 3 | Water | Liquid | Spreads, density 64 |
+| 17 | Dirt | Powder | Heavy, high slide resistance |
+| 18 | Ground | Static | Diggable terrain |
+| 21 | Wall | Static | Wall structure material |
+
+**Soft Terrain** — materials that structures can "ghost" through:
+- Ground, Dirt, Sand, Water (checked via `Materials.IsSoftTerrain()`)
+
+---
+
+## Structure System
+
+Structures are 8×8 block entities managed separately from the cell grid. Each structure type has its own manager class.
+
+**Structure Types (`StructureType`):**
+| Type | Manager | Behavior |
+|------|---------|----------|
+| `Belt` | `BeltManager` | Moves powder/liquid horizontally, solid |
+| `Lift` | `LiftManager` | Applies upward force, **passable** (materials flow through) |
+| `Wall` | `WallManager` | Purely static blocker, solid |
+
+**Common patterns:**
+- All structures use 8×8 cell blocks, snapped to grid
+- Placement checks for Air or soft terrain
+- **Ghost mode**: structures placed through soft terrain wait for terrain to clear before activating
+- Ghost structures block material flow (except lifts, which remain passable)
+- Each manager tracks ghost block origins for efficient activation checks
+
+**Tile storage:**
+- `BeltManager` uses `NativeHashMap<int, BeltTile>` (sparse)
+- `LiftManager` and `WallManager` use `NativeArray<T>` (dense, parallel to cells)
+
+**Key methods on managers:**
+- `Place*(x, y, ...)` — place an 8×8 block (returns false if blocked)
+- `Remove*(x, y)` — remove an 8×8 block
+- `UpdateGhostStates()` — activate ghost blocks where terrain cleared
+- `GetGhostBlockPositions(List<Vector2Int>)` — for rendering ghost overlays
