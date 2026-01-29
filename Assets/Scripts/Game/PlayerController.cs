@@ -12,7 +12,7 @@ namespace FallingSand
     public class PlayerController : MonoBehaviour
     {
         [Header("Movement")]
-        [SerializeField] private float moveSpeed = 80f;       // world units/sec
+        [SerializeField] private float moveSpeed = 250f;       // world units/sec
         [SerializeField] private float jumpForce = 400f;      // impulse force
 
         [Header("Ground Check")]

@@ -88,6 +88,12 @@ namespace FallingSand.Debugging
                 }
             }
 
+            // Toggle profiling with F5
+            if (keyboard.f5Key.wasPressedThisFrame)
+            {
+                FallingSand.PerformanceProfiler.Enabled = !FallingSand.PerformanceProfiler.Enabled;
+            }
+
             // Update all sections
             float deltaTime = Time.unscaledDeltaTime;
             foreach (var section in sections)
@@ -126,7 +132,7 @@ namespace FallingSand.Debugging
             y += LineHeight;
 
             GUI.color = Color.gray;
-            string toggleState = $"F3={OnOffText(overlayEnabled)} | F4=Gizmos {OnOffText(gizmosEnabled)}";
+            string toggleState = $"F3={OnOffText(overlayEnabled)} | F4=Gizmos | F5=Profile {OnOffText(FallingSand.PerformanceProfiler.Enabled)}";
             GUI.Label(new Rect(x, y, Width - 20, LineHeight), toggleState, labelStyle);
             y += LineHeight;
 

@@ -188,10 +188,12 @@ namespace FallingSand
 
             // STEP 2: Step Unity physics
             // Gravity is now baked with 1/15 factor, so use deltaTime directly
+            PerformanceProfiler.StartTiming(TimingSlot.ClusterPhysics);
             var physicsWatch = System.Diagnostics.Stopwatch.StartNew();
             Physics2D.Simulate(deltaTime);
             physicsWatch.Stop();
             PhysicsTimeMs = (float)physicsWatch.Elapsed.TotalMilliseconds;
+            PerformanceProfiler.StopTiming(TimingSlot.ClusterPhysics);
 
             // Manual sleep forcing - physics solver maintains equilibrium velocity (~1.6) due to
             // constant penetration resolution, so Unity's sleep system never triggers.
@@ -231,10 +233,12 @@ namespace FallingSand
             }
 
             // STEP 3: Sync cluster pixels to grid at new positions
+            PerformanceProfiler.StartTiming(TimingSlot.ClusterSync);
             var syncWatch = System.Diagnostics.Stopwatch.StartNew();
             SyncAllToWorld();
             syncWatch.Stop();
             SyncTimeMs = (float)syncWatch.Elapsed.TotalMilliseconds + (float)clearWatch.Elapsed.TotalMilliseconds;
+            PerformanceProfiler.StopTiming(TimingSlot.ClusterSync);
         }
 
         /// <summary>

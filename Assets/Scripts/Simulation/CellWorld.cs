@@ -89,13 +89,20 @@ namespace FallingSand
                 return;
 
             int index = y * width + x;
-            var cell = cells[index];
-            cell.materialId = materialId;
-            cell.velocityX = 0;
-            cell.velocityY = 0;
-            cells[index] = cell;
+            cells[index] = new Cell
+            {
+                materialId = materialId,
+                flags = CellFlags.None,
+                velocityX = 0,
+                velocityY = 0,
+                temperature = 20,
+                structureId = 0,
+                ownerId = 0,
+                velocityFracX = 0,
+                velocityFracY = 0,
+                frameUpdated = 0,
+            };
 
-            // Mark chunk dirty
             MarkDirty(x, y);
         }
 

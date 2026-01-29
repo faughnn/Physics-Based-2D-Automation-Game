@@ -11,6 +11,7 @@ namespace FallingSand
     {
         private BeltManager beltManager;
         private LiftManager liftManager;
+        private WallManager wallManager;
         private int worldWidth;
         private int worldHeight;
 
@@ -25,15 +26,18 @@ namespace FallingSand
         // Colors for ghost overlays
         private static readonly Color BeltGhostColor = new Color(0.3f, 0.3f, 0.4f, 0.35f);
         private static readonly Color LiftGhostColor = new Color(0.3f, 0.5f, 0.3f, 0.35f);
+        private static readonly Color WallGhostColor = new Color(0.4f, 0.4f, 0.5f, 0.35f);
 
         // Reusable lists to avoid GC
         private readonly List<Vector2Int> beltPositions = new List<Vector2Int>();
         private readonly List<Vector2Int> liftPositions = new List<Vector2Int>();
+        private readonly List<Vector2Int> wallPositions = new List<Vector2Int>();
 
-        public void Initialize(BeltManager beltManager, LiftManager liftManager, int worldWidth, int worldHeight)
+        public void Initialize(BeltManager beltManager, LiftManager liftManager, WallManager wallManager, int worldWidth, int worldHeight)
         {
             this.beltManager = beltManager;
             this.liftManager = liftManager;
+            this.wallManager = wallManager;
             this.worldWidth = worldWidth;
             this.worldHeight = worldHeight;
 
@@ -57,15 +61,17 @@ namespace FallingSand
 
         private void LateUpdate()
         {
-            if (beltManager == null || liftManager == null) return;
+            if (beltManager == null || liftManager == null || wallManager == null) return;
 
             beltPositions.Clear();
             liftPositions.Clear();
+            wallPositions.Clear();
 
             beltManager.GetGhostBlockPositions(beltPositions);
             liftManager.GetGhostBlockPositions(liftPositions);
+            wallManager.GetGhostBlockPositions(wallPositions);
 
-            int totalNeeded = beltPositions.Count + liftPositions.Count;
+            int totalNeeded = beltPositions.Count + liftPositions.Count + wallPositions.Count;
 
             // Ensure pool has enough sprites
             while (pool.Count < totalNeeded)
@@ -100,6 +106,17 @@ namespace FallingSand
                 Vector2 worldPos = CoordinateUtils.CellToWorld(pos.x + 3.5f, pos.y + 3.5f, worldWidth, worldHeight);
                 sr.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
                 sr.color = LiftGhostColor;
+                sr.gameObject.SetActive(true);
+            }
+
+            // Position wall ghost sprites
+            for (int i = 0; i < wallPositions.Count; i++)
+            {
+                var pos = wallPositions[i];
+                var sr = pool[idx++];
+                Vector2 worldPos = CoordinateUtils.CellToWorld(pos.x + 3.5f, pos.y + 3.5f, worldWidth, worldHeight);
+                sr.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
+                sr.color = WallGhostColor;
                 sr.gameObject.SetActive(true);
             }
 

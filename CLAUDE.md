@@ -138,4 +138,4 @@ When requested to log a bug, create a markdown file in `G:\Sandy\DevPlans\Bugs\`
 - `FIXED-BugName.md` - Bug has been resolved
 - `REJECTED-BugName.md` - Not a bug, or won't fix
 
-Rename the file when status changes.
+**After implementing a fix or working on a bug/feature, rename the file to reflect its new status** (e.g., `OPEN-BugName.md` → `FIXED-BugName.md`).

@@ -29,6 +29,14 @@ namespace FallingSand
         [ReadOnly]
         public NativeArray<LiftTile> liftTiles;
 
+        // Belt tiles for ghost tile blocking (HashMap: position key → tile data)
+        [ReadOnly]
+        public NativeHashMap<int, BeltTile> beltTiles;
+
+        // Wall tiles for ghost tile blocking (parallel array to cells)
+        [ReadOnly]
+        public NativeArray<WallTile> wallTiles;
+
         // Chunk indices to process this pass
         [ReadOnly]
         public NativeArray<int> chunkIndices;
@@ -669,11 +677,23 @@ namespace FallingSand
             if (!IsInExtendedRegion(x, y))
                 return false;
 
-            Cell target = cells[y * width + x];
+            int idx = y * width + x;
+            Cell target = cells[idx];
 
             // Can move into air
             if (target.materialId == Materials.Air)
+            {
+                // Check for blocking ghost structures (belts and walls only, lifts are passable)
+                // Ghost belt blocks movement
+                if (beltTiles.IsCreated && beltTiles.TryGetValue(idx, out BeltTile bt) && bt.isGhost)
+                    return false;
+
+                // Ghost wall blocks movement
+                if (wallTiles.IsCreated && wallTiles[idx].exists && wallTiles[idx].isGhost)
+                    return false;
+
                 return true;
+            }
 
             // Can displace lighter materials (not static, unless passable)
             MaterialDef targetMat = materials[target.materialId];

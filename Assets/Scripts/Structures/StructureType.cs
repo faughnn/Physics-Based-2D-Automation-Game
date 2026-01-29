@@ -8,8 +8,9 @@ namespace FallingSand
     {
         None = 0,
         Belt = 1,
-        Lift = 2,    // Future
+        Lift = 2,
         Furnace = 3, // Future
         Press = 4,   // Future
+        Wall = 5,
     }
 }

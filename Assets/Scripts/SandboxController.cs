@@ -54,6 +54,7 @@ namespace FallingSand
         public bool LiftMode => liftMode;
         public LiftManager LiftManager => simulation?.LiftManager;
         public bool WallMode => wallMode;
+        public WallManager WallManager => simulation?.WallManager;
 
         private void Start()
         {
@@ -384,47 +385,38 @@ namespace FallingSand
         private void PlaceWallAtMouse()
         {
             Vector2Int cell = GetCellAtMouse();
-            int gridX = (cell.x / 8) * 8;  // Snap to 8x8 grid
-            int gridY = (cell.y / 8) * 8;
+            int gridX = WallManager.SnapToGrid(cell.x);
+            int gridY = WallManager.SnapToGrid(cell.y);
 
-            var world = simulation.World;
-            var terrainColliders = simulation.TerrainColliders;
-
-            for (int dy = 0; dy < 8; dy++)
+            if (simulation.WallManager.PlaceWall(gridX, gridY))
             {
-                for (int dx = 0; dx < 8; dx++)
-                {
-                    int px = gridX + dx;
-                    int py = gridY + dy;
-                    if (world.IsInBounds(px, py))
-                    {
-                        world.SetCell(px, py, Materials.Wall);
-                        terrainColliders.MarkChunkDirtyAt(px, py);
-                    }
-                }
+                // Mark chunks dirty for terrain collider regeneration
+                MarkWallChunksDirty(gridX, gridY);
             }
         }
 
         private void RemoveWallAtMouse()
         {
             Vector2Int cell = GetCellAtMouse();
-            int gridX = (cell.x / 8) * 8;  // Snap to 8x8 grid
-            int gridY = (cell.y / 8) * 8;
+            int gridX = WallManager.SnapToGrid(cell.x);
+            int gridY = WallManager.SnapToGrid(cell.y);
 
-            var world = simulation.World;
+            if (simulation.WallManager.RemoveWall(gridX, gridY))
+            {
+                // Mark chunks dirty for terrain collider regeneration
+                MarkWallChunksDirty(gridX, gridY);
+            }
+        }
+
+        private void MarkWallChunksDirty(int gridX, int gridY)
+        {
+            // Mark all chunks covered by the 8x8 wall block
             var terrainColliders = simulation.TerrainColliders;
-
             for (int dy = 0; dy < 8; dy++)
             {
                 for (int dx = 0; dx < 8; dx++)
                 {
-                    int px = gridX + dx;
-                    int py = gridY + dy;
-                    if (world.IsInBounds(px, py))
-                    {
-                        world.SetCell(px, py, Materials.Air);
-                        terrainColliders.MarkChunkDirtyAt(px, py);
-                    }
+                    terrainColliders.MarkChunkDirtyAt(gridX + dx, gridY + dy);
                 }
             }
         }

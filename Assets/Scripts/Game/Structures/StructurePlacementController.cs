@@ -8,6 +8,7 @@ namespace FallingSand
         None,       // Normal gameplay
         Belt,       // Placing belts
         Lift,       // Placing lifts
+        Wall,       // Placing walls
     }
 
     /// <summary>
@@ -118,6 +119,19 @@ namespace FallingSand
                 }
             }
 
+            // W key - Wall placement (uses same unlock as Lifts)
+            if (keyboard.wKey.wasPressedThisFrame)
+            {
+                if (ProgressionManager.Instance != null && ProgressionManager.Instance.IsUnlocked(Ability.PlaceLifts))
+                {
+                    ToggleMode(PlacementMode.Wall);
+                }
+                else
+                {
+                    ShowLockedMessage("Walls not yet unlocked!");
+                }
+            }
+
             // F8 - Debug: unlock all structures immediately
             if (keyboard.f8Key.wasPressedThisFrame)
             {
@@ -178,6 +192,9 @@ namespace FallingSand
                     break;
                 case PlacementMode.Lift:
                     HandleLiftPlacement();
+                    break;
+                case PlacementMode.Wall:
+                    HandleWallPlacement();
                     break;
             }
         }
@@ -276,6 +293,43 @@ namespace FallingSand
             simulation.LiftManager.RemoveLift(x, y);
         }
 
+        private void HandleWallPlacement()
+        {
+            Vector2Int cellPos = GetCellAtMouse();
+
+            // Simple click-to-place (no drag locking needed for walls)
+            if (mouse.leftButton.isPressed)
+            {
+                TryPlaceWall(cellPos.x, cellPos.y);
+            }
+            else if (mouse.rightButton.isPressed)
+            {
+                TryRemoveWall(cellPos.x, cellPos.y);
+            }
+        }
+
+        private void TryPlaceWall(int x, int y)
+        {
+            int gridX = WallManager.SnapToGrid(x);
+            int gridY = WallManager.SnapToGrid(y);
+
+            if (simulation.WallManager.PlaceWall(gridX, gridY))
+            {
+                MarkStructureChunksDirty(gridX, gridY);
+            }
+        }
+
+        private void TryRemoveWall(int x, int y)
+        {
+            int gridX = WallManager.SnapToGrid(x);
+            int gridY = WallManager.SnapToGrid(y);
+
+            if (simulation.WallManager.RemoveWall(gridX, gridY))
+            {
+                MarkStructureChunksDirty(gridX, gridY);
+            }
+        }
+
         private void MarkStructureChunksDirty(int gridX, int gridY)
         {
             var terrainColliders = simulation.TerrainColliders;
@@ -300,10 +354,15 @@ namespace FallingSand
                 gridX = BeltManager.SnapToGrid(cellPos.x);
                 gridY = isDragging && dragLockedY >= 0 ? dragLockedY : BeltManager.SnapToGrid(cellPos.y);
             }
-            else // Lift mode - vertical drag (X-locked)
+            else if (currentMode == PlacementMode.Lift)
             {
                 gridX = isDragging && dragLockedX >= 0 ? dragLockedX : LiftManager.SnapToGrid(cellPos.x);
                 gridY = LiftManager.SnapToGrid(cellPos.y);
+            }
+            else // Wall mode - simple grid snap
+            {
+                gridX = WallManager.SnapToGrid(cellPos.x);
+                gridY = WallManager.SnapToGrid(cellPos.y);
             }
 
             // Position preview at center of 8x8 block
@@ -347,6 +406,10 @@ namespace FallingSand
 
                     // Check for existing lift
                     if (simulation.LiftManager.HasLiftAt(cx, cy))
+                        return PlacementResult.Invalid;
+
+                    // Check for existing wall
+                    if (simulation.WallManager.HasWallAt(cx, cy))
                         return PlacementResult.Invalid;
 
                     byte mat = world.GetCell(cx, cy);
@@ -427,6 +490,7 @@ namespace FallingSand
             {
                 PlacementMode.Belt => $"BELT MODE (Dir: {(beltDirection > 0 ? "Right" : "Left")}) - Q/E rotate, LMB place, RMB remove, ESC cancel",
                 PlacementMode.Lift => "LIFT MODE - LMB place, RMB remove, ESC cancel",
+                PlacementMode.Wall => "WALL MODE - LMB place, RMB remove, ESC cancel",
                 _ => ""
             };
 

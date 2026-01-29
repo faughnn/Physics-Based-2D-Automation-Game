@@ -22,8 +22,10 @@ namespace FallingSand
         public float LastSimulationTimeMs { get; private set; }
         public int LastActiveChunkCount { get; private set; }
 
-        // Current lift manager (stored temporarily during Simulate for ScheduleGroup access)
+        // Current managers (stored temporarily during Simulate for ScheduleGroup access)
         private LiftManager currentLiftManager;
+        private BeltManager currentBeltManager;
+        private WallManager currentWallManager;
 
         // Physics time accumulator for frame-rate-independent cluster/player physics.
         // Cell simulation is intentionally frame-count-based (Noita-style), but Unity
@@ -48,9 +50,10 @@ namespace FallingSand
         /// </summary>
         /// <param name="world">The cell world to simulate</param>
         /// <param name="clusterManager">Optional cluster manager for rigid body physics</param>
-        /// <param name="beltManager">Optional belt manager for belt-cluster interaction</param>
+        /// <param name="beltManager">Optional belt manager for belt-cluster interaction and ghost tile blocking</param>
         /// <param name="liftManager">Optional lift manager for lift-cluster interaction and lift zones</param>
-        public void Simulate(CellWorld world, ClusterManager clusterManager = null, BeltManager beltManager = null, LiftManager liftManager = null)
+        /// <param name="wallManager">Optional wall manager for ghost tile blocking</param>
+        public void Simulate(CellWorld world, ClusterManager clusterManager = null, BeltManager beltManager = null, LiftManager liftManager = null, WallManager wallManager = null)
         {
             stopwatch.Restart();
 
@@ -80,8 +83,10 @@ namespace FallingSand
                 }
             }
 
-            // Store liftManager reference for ScheduleGroup
+            // Store manager references for ScheduleGroup
             currentLiftManager = liftManager;
+            currentBeltManager = beltManager;
+            currentWallManager = wallManager;
 
             // ========== CELL SIMULATION ==========
             // Collect active chunks into groups
@@ -91,19 +96,51 @@ namespace FallingSand
 
             // Schedule 4 passes with dependencies
             // Each pass must complete before the next starts
-            JobHandle handle = default;
+            if (PerformanceProfiler.Enabled)
+            {
+                // When profiling: complete each group separately to measure timing
+                if (groupA.Length > 0)
+                {
+                    PerformanceProfiler.StartTiming(TimingSlot.CellSimGroupA);
+                    ScheduleGroup(world, groupA, default).Complete();
+                    PerformanceProfiler.StopTiming(TimingSlot.CellSimGroupA);
+                }
+                if (groupB.Length > 0)
+                {
+                    PerformanceProfiler.StartTiming(TimingSlot.CellSimGroupB);
+                    ScheduleGroup(world, groupB, default).Complete();
+                    PerformanceProfiler.StopTiming(TimingSlot.CellSimGroupB);
+                }
+                if (groupC.Length > 0)
+                {
+                    PerformanceProfiler.StartTiming(TimingSlot.CellSimGroupC);
+                    ScheduleGroup(world, groupC, default).Complete();
+                    PerformanceProfiler.StopTiming(TimingSlot.CellSimGroupC);
+                }
+                if (groupD.Length > 0)
+                {
+                    PerformanceProfiler.StartTiming(TimingSlot.CellSimGroupD);
+                    ScheduleGroup(world, groupD, default).Complete();
+                    PerformanceProfiler.StopTiming(TimingSlot.CellSimGroupD);
+                }
+            }
+            else
+            {
+                // Normal mode: chain all groups for maximum parallelism
+                JobHandle handle = default;
 
-            if (groupA.Length > 0)
-                handle = ScheduleGroup(world, groupA, handle);
-            if (groupB.Length > 0)
-                handle = ScheduleGroup(world, groupB, handle);
-            if (groupC.Length > 0)
-                handle = ScheduleGroup(world, groupC, handle);
-            if (groupD.Length > 0)
-                handle = ScheduleGroup(world, groupD, handle);
+                if (groupA.Length > 0)
+                    handle = ScheduleGroup(world, groupA, handle);
+                if (groupB.Length > 0)
+                    handle = ScheduleGroup(world, groupB, handle);
+                if (groupC.Length > 0)
+                    handle = ScheduleGroup(world, groupC, handle);
+                if (groupD.Length > 0)
+                    handle = ScheduleGroup(world, groupD, handle);
 
-            // Complete all jobs
-            handle.Complete();
+                // Complete all jobs
+                handle.Complete();
+            }
 
             // Reset dirty state for next frame
             world.ResetDirtyState();
@@ -120,6 +157,8 @@ namespace FallingSand
                 chunks = world.chunks,
                 materials = world.materials,
                 liftTiles = currentLiftManager?.LiftTiles ?? default,
+                beltTiles = currentBeltManager?.GetBeltTiles() ?? default,
+                wallTiles = currentWallManager?.WallTiles ?? default,
                 chunkIndices = chunkIndices.AsArray(),
                 width = world.width,
                 height = world.height,

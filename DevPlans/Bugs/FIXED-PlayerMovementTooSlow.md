@@ -1,7 +1,8 @@
 # Bug: Player Movement Speed Too Slow
 
-**Status:** OPEN
+**Status:** FIXED
 **Reported:** 2026-01-28
+**Fixed:** 2026-01-29
 
 ## Description
 
@@ -18,3 +19,7 @@ Player movement speed is noticeably too slow.
 ## Severity
 
 Medium — affects overall game feel and player experience.
+
+## Resolution
+
+Increased `moveSpeed` in `PlayerController.cs` from `80f` to `250f` world units/sec. The original value was too low for responsive platformer movement.

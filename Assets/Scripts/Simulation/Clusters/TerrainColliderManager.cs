@@ -82,7 +82,9 @@ namespace FallingSand
             // Periodic update of dirty chunks
             if (frameCount % updateInterval == 0 && dirtyChunks.Count > 0)
             {
+                PerformanceProfiler.StartTiming(TimingSlot.TerrainColliders);
                 UpdateDirtyChunks();
+                PerformanceProfiler.StopTiming(TimingSlot.TerrainColliders);
             }
         }
 

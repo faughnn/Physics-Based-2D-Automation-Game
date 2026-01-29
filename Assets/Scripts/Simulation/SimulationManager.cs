@@ -20,6 +20,7 @@ namespace FallingSand
         private TerrainColliderManager terrainColliders;
         private BeltManager beltManager;
         private LiftManager liftManager;
+        private WallManager wallManager;
         private CellRenderer cellRenderer;
         private GhostStructureRenderer ghostRenderer;
 
@@ -34,6 +35,7 @@ namespace FallingSand
         public TerrainColliderManager TerrainColliders => terrainColliders;
         public BeltManager BeltManager => beltManager;
         public LiftManager LiftManager => liftManager;
+        public WallManager WallManager => wallManager;
         public CellRenderer CellRenderer => cellRenderer;
         public int WorldWidth => worldWidth;
         public int WorldHeight => worldHeight;
@@ -95,6 +97,9 @@ namespace FallingSand
             // Create lift manager
             liftManager = new LiftManager(world);
 
+            // Create wall manager
+            wallManager = new WallManager(world);
+
             // Create renderer
             GameObject rendererObj = new GameObject("CellRenderer");
             cellRenderer = rendererObj.AddComponent<CellRenderer>();
@@ -103,7 +108,7 @@ namespace FallingSand
             // Create ghost structure renderer (overlays for underground structures)
             GameObject ghostObj = new GameObject("GhostStructureRenderer");
             ghostRenderer = ghostObj.AddComponent<GhostStructureRenderer>();
-            ghostRenderer.Initialize(beltManager, liftManager, worldWidth, worldHeight);
+            ghostRenderer.Initialize(beltManager, liftManager, wallManager, worldWidth, worldHeight);
 
             // Create graphics manager (handles visual effects)
             GameObject graphicsObj = new GameObject("GraphicsManager");
@@ -124,26 +129,37 @@ namespace FallingSand
             if (world == null) return;
 
             // Activate ghost structures whose terrain has been cleared
+            PerformanceProfiler.StartTiming(TimingSlot.GhostStateUpdate);
             beltManager.UpdateGhostStates();
             liftManager.UpdateGhostStates();
+            wallManager.UpdateGhostStates();
+            PerformanceProfiler.StopTiming(TimingSlot.GhostStateUpdate);
 
             // Simulate physics (multithreaded) every frame
             // Gravity is applied at fixed interval (PhysicsSettings.GravityInterval)
             // clusterManager handles rigid body physics before cell simulation
             // beltManager applies horizontal force to clusters resting on belts
             // liftManager applies upward force to cells/clusters in lift zones
-            simulator.Simulate(world, clusterManager, beltManager, liftManager);
+            // Note: Cell sim group timings are handled internally in CellSimulatorJobbed
+            simulator.Simulate(world, clusterManager, beltManager, liftManager, wallManager);
 
             // Simulate belt movement (Burst-compiled parallel job)
+            PerformanceProfiler.StartTiming(TimingSlot.BeltSimulation);
             JobHandle beltHandle = beltManager.ScheduleSimulateBelts(
                 world.cells, world.chunks, world.materials,
                 world.width, world.height,
                 world.chunksX, world.chunksY,
                 world.currentFrame);
             beltHandle.Complete();
+            PerformanceProfiler.StopTiming(TimingSlot.BeltSimulation);
 
             // Upload texture changes (only dirty chunks)
+            PerformanceProfiler.StartTiming(TimingSlot.RenderUpload);
             cellRenderer.UploadDirtyChunks();
+            PerformanceProfiler.StopTiming(TimingSlot.RenderUpload);
+
+            // Finalize frame timings
+            PerformanceProfiler.EndFrame();
         }
 
         /// <summary>
@@ -168,6 +184,7 @@ namespace FallingSand
                 instance = null;
             }
 
+            wallManager?.Dispose();
             liftManager?.Dispose();
             beltManager?.Dispose();
             simulator?.Dispose();

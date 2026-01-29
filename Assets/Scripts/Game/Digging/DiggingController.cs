@@ -18,6 +18,10 @@ namespace FallingSand
         [SerializeField] private float maxUpwardVelocity = 8f;
         [SerializeField] private float horizontalSpread = 3f;
 
+        [Header("Repeat Settings")]
+        [SerializeField] private float digCooldown = 0.1f;  // 100ms between digs
+
+        private float nextDigTime;
         private PlayerController player;
         private Camera mainCamera;
         private Mouse mouse;
@@ -39,18 +43,23 @@ namespace FallingSand
         {
             if (mouse == null || player == null || World == null) return;
 
-            // Left click to dig
-            if (mouse.leftButton.wasPressedThisFrame)
+            // Left click/hold to dig
+            if (mouse.leftButton.isPressed && Time.time >= nextDigTime)
             {
-                TryDig();
+                PerformanceProfiler.StartTiming(TimingSlot.Digging);
+                if (TryDig())
+                {
+                    nextDigTime = Time.time + digCooldown;
+                }
+                PerformanceProfiler.StopTiming(TimingSlot.Digging);
             }
         }
 
-        private void TryDig()
+        private bool TryDig()
         {
             // Check shovel equipped
             if (player.EquippedTool != ToolType.Shovel)
-                return;
+                return false;
 
             // Get click position in world coordinates
             Vector2 mouseScreen = mouse.position.ReadValue();
@@ -63,7 +72,7 @@ namespace FallingSand
             float distance = Vector2.Distance(playerPos, clickPos);
 
             if (distance > maxDigDistance)
-                return;
+                return false;
 
             // Convert click to cell coordinates using CoordinateUtils
             var world = World;
@@ -71,6 +80,7 @@ namespace FallingSand
 
             // Perform the dig
             DigAt(centerCell);
+            return true;
         }
 
         private void DigAt(Vector2Int center)
