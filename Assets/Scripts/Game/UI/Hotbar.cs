@@ -71,7 +71,7 @@ namespace FallingSand
             if (Keyboard.current.digit5Key.wasPressedThisFrame) SelectSlot(4);
 
             // Scroll wheel cycling
-            if (Mouse.current != null)
+            if (Mouse.current != null && !GameInput.IsPointerOverUI())
             {
                 float scroll = Mouse.current.scroll.ReadValue().y;
                 if (scroll > 0f) CycleSlot(-1);

@@ -15,6 +15,10 @@ namespace FallingSand
         private const float FadeStartRatio = 0.8f;  // Arc appears at 80% of range
         private const float LineWidth = 3f;
 
+        private const int AoeSegments = 64;
+        private const float AoeLineWidth = 2f;
+        private const float AoeAlpha = 0.4f;
+
         private static readonly Color ShovelColor = new Color(1f, 0.6f, 0f);  // Orange
         private static readonly Color GrabberColor = new Color(0f, 0.8f, 0.2f);  // Green
         private static readonly Color OutOfRangeColor = Color.red;
@@ -26,6 +30,7 @@ namespace FallingSand
         private Mouse mouse;
 
         private LineRenderer lineRenderer;
+        private LineRenderer aoeLineRenderer;
 
         public void Initialize(PlayerController player, DiggingController digging, CellGrabSystem grabSystem)
         {
@@ -54,6 +59,21 @@ namespace FallingSand
             // Use a simple unlit material
             lineRenderer.material = new Material(Shader.Find("Sprites/Default"));
             lineRenderer.sortingOrder = 15;
+
+            // AoE circle renderer
+            var aoeObj = new GameObject("ToolAoECircle");
+            aoeObj.transform.SetParent(transform, false);
+
+            aoeLineRenderer = aoeObj.AddComponent<LineRenderer>();
+            aoeLineRenderer.useWorldSpace = true;
+            aoeLineRenderer.positionCount = AoeSegments;
+            aoeLineRenderer.startWidth = AoeLineWidth;
+            aoeLineRenderer.endWidth = AoeLineWidth;
+            aoeLineRenderer.numCapVertices = 4;
+            aoeLineRenderer.loop = true;
+            aoeLineRenderer.material = new Material(Shader.Find("Sprites/Default"));
+            aoeLineRenderer.sortingOrder = 15;
+            aoeLineRenderer.enabled = false;
         }
 
         private void LateUpdate()
@@ -93,57 +113,103 @@ namespace FallingSand
 
             float ratio = distance / range;
 
-            // Hidden below 80% of range
-            if (ratio < FadeStartRatio)
+            // Arc only shows at 80%+ of range; AoE circle is independent
+            if (ratio >= FadeStartRatio)
             {
-                Hide();
-                return;
-            }
+                // Compute alpha and color
+                float alpha;
+                Color arcColor;
 
-            // Compute alpha and color
-            float alpha;
-            Color arcColor;
+                if (ratio <= 1f)
+                {
+                    // Fading in: 80% -> 100%
+                    alpha = (ratio - FadeStartRatio) / (1f - FadeStartRatio);
+                    arcColor = toolColor;
+                }
+                else
+                {
+                    // Out of range
+                    alpha = 1f;
+                    arcColor = OutOfRangeColor;
+                }
 
-            if (ratio <= 1f)
-            {
-                // Fading in: 80% -> 100%
-                alpha = (ratio - FadeStartRatio) / (1f - FadeStartRatio);
-                arcColor = toolColor;
+                arcColor.a = alpha;
+
+                // Build the arc centered on player-to-mouse direction
+                float centerAngle = Mathf.Atan2(toMouse.y, toMouse.x) * Mathf.Rad2Deg;
+                float halfArc = ArcDegrees * 0.5f;
+                float startAngle = centerAngle - halfArc;
+                float angleStep = ArcDegrees / ArcSegments;
+
+                int pointCount = ArcSegments + 1;
+                lineRenderer.positionCount = pointCount;
+                lineRenderer.startColor = arcColor;
+                lineRenderer.endColor = arcColor;
+
+                for (int i = 0; i < pointCount; i++)
+                {
+                    float angle = (startAngle + angleStep * i) * Mathf.Deg2Rad;
+                    Vector2 point = playerPos + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * range;
+                    lineRenderer.SetPosition(i, new Vector3(point.x, point.y, 0f));
+                }
+
+                lineRenderer.enabled = true;
             }
             else
             {
-                // Out of range
-                alpha = 1f;
-                arcColor = OutOfRangeColor;
+                lineRenderer.enabled = false;
             }
 
-            arcColor.a = alpha;
-
-            // Build the arc centered on player-to-mouse direction
-            float centerAngle = Mathf.Atan2(toMouse.y, toMouse.x) * Mathf.Rad2Deg;
-            float halfArc = ArcDegrees * 0.5f;
-            float startAngle = centerAngle - halfArc;
-            float angleStep = ArcDegrees / ArcSegments;
-
-            int pointCount = ArcSegments + 1;
-            lineRenderer.positionCount = pointCount;
-            lineRenderer.startColor = arcColor;
-            lineRenderer.endColor = arcColor;
-
-            for (int i = 0; i < pointCount; i++)
+            // AoE circle at cursor
+            float cellRadius = 0f;
+            switch (tool)
             {
-                float angle = (startAngle + angleStep * i) * Mathf.Deg2Rad;
-                Vector2 point = playerPos + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * range;
-                lineRenderer.SetPosition(i, new Vector3(point.x, point.y, 0f));
+                case ToolType.Shovel:
+                    cellRadius = digging != null ? digging.DigRadius : 0f;
+                    break;
+                case ToolType.Grabber:
+                    cellRadius = grabSystem != null ? grabSystem.GrabRadius : 0f;
+                    break;
             }
 
-            lineRenderer.enabled = true;
+            bool showAoe = cellRadius > 0f && ratio <= 1f;
+            if (showAoe && tool == ToolType.Grabber && grabSystem != null && grabSystem.IsHolding)
+                showAoe = false;
+
+            if (showAoe)
+            {
+                float worldRadius = CoordinateUtils.ScaleCellToWorld(cellRadius);
+                Color aoeColor = toolColor;
+                aoeColor.a = AoeAlpha;
+
+                aoeLineRenderer.startColor = aoeColor;
+                aoeLineRenderer.endColor = aoeColor;
+                aoeLineRenderer.positionCount = AoeSegments;
+
+                float aoeAngleStep = 360f / AoeSegments;
+                Vector2 center = (Vector2)mouseWorld;
+                for (int i = 0; i < AoeSegments; i++)
+                {
+                    float angle = aoeAngleStep * i * Mathf.Deg2Rad;
+                    Vector2 point = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * worldRadius;
+                    aoeLineRenderer.SetPosition(i, new Vector3(point.x, point.y, 0f));
+                }
+
+                aoeLineRenderer.enabled = true;
+            }
+            else
+            {
+                if (aoeLineRenderer != null)
+                    aoeLineRenderer.enabled = false;
+            }
         }
 
         private void Hide()
         {
             if (lineRenderer != null)
                 lineRenderer.enabled = false;
+            if (aoeLineRenderer != null)
+                aoeLineRenderer.enabled = false;
         }
     }
 }

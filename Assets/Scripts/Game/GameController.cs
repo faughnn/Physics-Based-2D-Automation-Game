@@ -55,7 +55,7 @@ namespace FallingSand
             levelLoader.LoadLevel(levelData);
 
             // 5b. Generate terrain colliders immediately (before player spawns)
-            simulation.TerrainColliders.ProcessAllDirtyChunksNow();
+            simulation.TerrainColliders.ProcessDirtyChunksWithLog();
 
             // 6. Register all level objectives
             foreach (var objective in levelData.Objectives)

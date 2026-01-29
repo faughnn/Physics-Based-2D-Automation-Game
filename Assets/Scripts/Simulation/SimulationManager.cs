@@ -135,6 +135,11 @@ namespace FallingSand
             wallManager.UpdateGhostStates();
             PerformanceProfiler.StopTiming(TimingSlot.GhostStateUpdate);
 
+            // Rebuild terrain colliders before physics so the player never collides with stale geometry
+            PerformanceProfiler.StartTiming(TimingSlot.TerrainColliders);
+            terrainColliders.ProcessDirtyChunks();
+            PerformanceProfiler.StopTiming(TimingSlot.TerrainColliders);
+
             // Simulate physics (multithreaded) every frame
             // Gravity is applied at fixed interval (PhysicsSettings.GravityInterval)
             // clusterManager handles rigid body physics before cell simulation

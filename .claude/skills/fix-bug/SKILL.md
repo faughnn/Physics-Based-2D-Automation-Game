@@ -1,7 +1,7 @@
 ---
 name: fix-bug
 description: Pick an open bug report, investigate the codebase, and create an implementation plan to fix it. Use when user asks to fix a bug, work on a bug, tackle a bug, or pick up a bug.
-allowed-tools: Read, Write, Glob, Grep, Task, AskUserQuestion, EnterPlanMode
+allowed-tools: Read, Write, Glob, Grep, Bash, Task, AskUserQuestion, EnterPlanMode
 user-invocable: true
 ---
 
@@ -78,6 +78,16 @@ Use **EnterPlanMode** to design the implementation plan. The plan should include
 7. **Verification** — How to confirm the fix works (manual test steps)
 
 The plan should be concrete enough that someone could implement it without re-reading the bug report. Include field names, method signatures, and algorithmic details — not just "update the controller."
+
+### Step 7: Rename Bug Report After Implementation
+
+After the plan is approved and the fix has been implemented, rename the bug report file from `OPEN-{BugName}.md` to `FIXED-{BugName}.md` using the Bash tool:
+
+```
+git mv "DevPlans/Bugs/OPEN-BugName.md" "DevPlans/Bugs/FIXED-BugName.md"
+```
+
+If the file is not tracked by git, use a regular `mv` instead. This keeps the bug tracker up to date per the project conventions in CLAUDE.md.
 
 ## Important Rules
 

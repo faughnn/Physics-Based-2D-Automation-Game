@@ -67,6 +67,7 @@ namespace FallingSand
         private void Update()
         {
             if (mouse == null || world == null) return;
+            if (GameInput.IsPointerOverUI()) return;
 
             // Only active when Grabber is equipped
             if (player == null || player.EquippedTool != ToolType.Grabber)
@@ -312,5 +313,6 @@ namespace FallingSand
         public int TotalGrabbedCount => totalGrabbedCount;
 
         public float MaxGrabDistance => maxGrabDistance;
+        public float GrabRadius => grabRadius;
     }
 }

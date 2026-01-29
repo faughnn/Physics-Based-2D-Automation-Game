@@ -27,6 +27,7 @@ namespace FallingSand
         private Mouse mouse;
 
         public float MaxDigDistance => maxDigDistance;
+        public float DigRadius => digRadius;
 
         private SimulationManager Simulation => SimulationManager.Instance;
         private CellWorld World => Simulation?.World;
@@ -44,6 +45,7 @@ namespace FallingSand
         private void Update()
         {
             if (mouse == null || player == null || World == null) return;
+            if (GameInput.IsPointerOverUI()) return;
 
             // Left click/hold to dig
             if (mouse.leftButton.isPressed && Time.time >= nextDigTime)

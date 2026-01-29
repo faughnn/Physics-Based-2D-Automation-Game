@@ -169,6 +169,7 @@ namespace FallingSand
                 gravity = PhysicsSettings.CellGravityAccel,
                 maxVelocity = PhysicsSettings.MaxVelocity,
                 liftForce = PhysicsSettings.LiftForce,
+                liftExitLateralForce = PhysicsSettings.LiftExitLateralForce,
             };
 
             // innerLoopBatchCount = 1 means each chunk is processed by one thread

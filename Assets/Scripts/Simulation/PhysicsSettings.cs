@@ -34,6 +34,13 @@ namespace FallingSand
         /// </summary>
         public const byte LiftForce = 20;
 
+        /// <summary>
+        /// Lateral force applied to material on the exit row of a lift (fountain effect).
+        /// Cells at the edges of the 8-wide lift tile get pushed outward strongly,
+        /// center cells get a slight nudge. Uses fractional accumulation via velocityFracX.
+        /// </summary>
+        public const byte LiftExitLateralForce = 120;
+
         // Sleep thresholds for cluster physics
         /// <summary>
         /// Linear velocity below which bodies can start sleeping (world units/sec).

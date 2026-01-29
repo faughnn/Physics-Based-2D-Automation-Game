@@ -9,10 +9,6 @@ namespace FallingSand
     /// </summary>
     public class TerrainColliderManager : MonoBehaviour
     {
-        [Header("Settings")]
-        [Tooltip("How often to check for chunk updates (frames)")]
-        public int updateInterval = 1;  // Every frame for debugging
-
         [Header("Debug")]
         public bool logColliderUpdates = true;
 
@@ -24,9 +20,6 @@ namespace FallingSand
 
         // Track which chunks need collider updates
         private HashSet<int> dirtyChunks = new HashSet<int>();
-
-        // Frame counter for periodic updates
-        private int frameCount = 0;
 
         /// <summary>
         /// Initialize with reference to the cell world.
@@ -75,19 +68,6 @@ namespace FallingSand
 
         }
 
-        private void Update()
-        {
-            frameCount++;
-
-            // Periodic update of dirty chunks
-            if (frameCount % updateInterval == 0 && dirtyChunks.Count > 0)
-            {
-                PerformanceProfiler.StartTiming(TimingSlot.TerrainColliders);
-                UpdateDirtyChunks();
-                PerformanceProfiler.StopTiming(TimingSlot.TerrainColliders);
-            }
-        }
-
         /// <summary>
         /// Mark a chunk as needing collider regeneration.
         /// Call this when static materials are added/removed in a chunk.
@@ -109,35 +89,18 @@ namespace FallingSand
         }
 
         /// <summary>
-        /// Update colliders for all dirty chunks.
+        /// Process all dirty chunks immediately and clear the dirty set.
+        /// Called by SimulationManager before physics to ensure colliders are fresh.
         /// </summary>
-        private void UpdateDirtyChunks()
+        public void ProcessDirtyChunks()
         {
-            // Process a limited number per frame to avoid hitches
-            int maxPerFrame = 4;
-            int processed = 0;
+            if (dirtyChunks.Count == 0) return;
 
             foreach (int chunkIndex in dirtyChunks)
             {
                 UpdateChunkCollider(chunkIndex);
-                processed++;
-
-                if (processed >= maxPerFrame)
-                    break;
             }
-
-            // Remove processed chunks
-            var toRemove = new List<int>();
-            foreach (int chunkIndex in dirtyChunks)
-            {
-                toRemove.Add(chunkIndex);
-                if (toRemove.Count >= maxPerFrame)
-                    break;
-            }
-            foreach (int idx in toRemove)
-            {
-                dirtyChunks.Remove(idx);
-            }
+            dirtyChunks.Clear();
         }
 
         /// <summary>
@@ -270,16 +233,11 @@ namespace FallingSand
         }
 
         /// <summary>
-        /// Process all dirty chunks immediately (blocking).
-        /// Call this after level load to ensure colliders exist before gameplay.
+        /// Process all dirty chunks with logging. Call after level load.
         /// </summary>
-        public void ProcessAllDirtyChunksNow()
+        public void ProcessDirtyChunksWithLog()
         {
-            foreach (int chunkIndex in dirtyChunks)
-            {
-                UpdateChunkCollider(chunkIndex);
-            }
-            dirtyChunks.Clear();
+            ProcessDirtyChunks();
             Debug.Log($"[TerrainColliderManager] Processed all dirty chunks, {chunkColliders.Count} colliders active");
         }
 

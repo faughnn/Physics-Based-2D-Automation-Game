@@ -141,10 +141,11 @@ namespace FallingSand
                 }
             }
 
-            // Escape cancels placement mode
+            // Escape cancels placement mode (skip if pointer is over UI, e.g. inventory overlay)
             if (keyboard.escapeKey.wasPressedThisFrame)
             {
-                ExitPlacementMode();
+                if (!GameInput.IsPointerOverUI())
+                    ExitPlacementMode();
             }
 
             // Q/E to rotate belt direction (only in belt mode)
@@ -169,6 +170,7 @@ namespace FallingSand
         private void HandlePlacementInput()
         {
             if (mouse == null) return;
+            if (GameInput.IsPointerOverUI()) return;
 
             switch (currentMode)
             {

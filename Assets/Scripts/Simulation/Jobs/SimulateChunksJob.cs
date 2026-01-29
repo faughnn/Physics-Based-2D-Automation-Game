@@ -58,6 +58,7 @@ namespace FallingSand
         public int gravity;      // Gravity applied when accumulator overflows (usually 1)
         public int maxVelocity;  // Maximum velocity in cells/frame (usually 16)
         public byte liftForce;   // Lift force (default 20, gravity is 17 so net is -3 upward)
+        public byte liftExitLateralForce; // Lateral force at lift exit row (fountain effect)
 
         private const int ChunkSize = 64;
 
@@ -189,6 +190,36 @@ namespace FallingSand
                 cell.velocityFracY = (byte)newFracY;
             }
 
+            // Apply lateral exit force at top of lift (fountain effect)
+            if (inLift && liftExitLateralForce > 0)
+            {
+                bool isExitRow = (y == 0) || !liftTiles.IsCreated ||
+                                 liftTiles[(y - 1) * width + x].liftId == 0;
+                if (isExitRow)
+                {
+                    int localX = x & 7;
+                    int lateralSign = (2 * localX - 7);
+                    int lateralForceValue = lateralSign * liftExitLateralForce;
+
+                    int newFracX = cell.velocityFracX + lateralForceValue;
+
+                    if (newFracX >= 256)
+                    {
+                        cell.velocityFracX = (byte)(newFracX - 256);
+                        cell.velocityX = (sbyte)math.min(cell.velocityX + 1, maxVelocity);
+                    }
+                    else if (newFracX < 0)
+                    {
+                        cell.velocityFracX = (byte)(newFracX + 256);
+                        cell.velocityX = (sbyte)math.max(cell.velocityX - 1, -maxVelocity);
+                    }
+                    else
+                    {
+                        cell.velocityFracX = (byte)newFracX;
+                    }
+                }
+            }
+
             // ===== PHASE 1: Vertical movement (down or up) =====
             int targetY = y + cell.velocityY;
             bool collided = false;
@@ -314,6 +345,9 @@ namespace FallingSand
                     cell.velocityX = 0;
                     cell.velocityY = 0;
                     cells[y * width + x] = cell;
+                    // Keep chunk alive if cell is unsupported (airborne) so gravity can act
+                    if (y + 1 < height && CanMoveTo(x, y + 1, mat.density))
+                        MarkDirtyInternal(x, y);
                     return;
                 }
             }
@@ -339,6 +373,9 @@ namespace FallingSand
             cell.velocityX = 0;
             cell.velocityY = 0;
             cells[y * width + x] = cell;
+            // Keep chunk alive if cell is unsupported (airborne) so gravity can act
+            if (y + 1 < height && CanMoveTo(x, y + 1, mat.density))
+                MarkDirtyInternal(x, y);
         }
 
         private void SimulateLiquid(int x, int y, Cell cell, MaterialDef mat)
@@ -374,6 +411,36 @@ namespace FallingSand
             else
             {
                 cell.velocityFracY = (byte)newFracY;
+            }
+
+            // Apply lateral exit force at top of lift (fountain effect)
+            if (inLift && liftExitLateralForce > 0)
+            {
+                bool isExitRow = (y == 0) || !liftTiles.IsCreated ||
+                                 liftTiles[(y - 1) * width + x].liftId == 0;
+                if (isExitRow)
+                {
+                    int localX = x & 7;
+                    int lateralSign = (2 * localX - 7);
+                    int lateralForceValue = lateralSign * liftExitLateralForce;
+
+                    int newFracX = cell.velocityFracX + lateralForceValue;
+
+                    if (newFracX >= 256)
+                    {
+                        cell.velocityFracX = (byte)(newFracX - 256);
+                        cell.velocityX = (sbyte)math.min(cell.velocityX + 1, maxVelocity);
+                    }
+                    else if (newFracX < 0)
+                    {
+                        cell.velocityFracX = (byte)(newFracX + 256);
+                        cell.velocityX = (sbyte)math.max(cell.velocityX - 1, -maxVelocity);
+                    }
+                    else
+                    {
+                        cell.velocityFracX = (byte)newFracX;
+                    }
+                }
             }
 
             // Try vertical movement based on velocity direction
