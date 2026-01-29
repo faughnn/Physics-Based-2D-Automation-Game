@@ -14,6 +14,7 @@ namespace FallingSand
         [Header("Grab Settings")]
         [SerializeField] private float grabRadius = 8f;      // In cells
         [SerializeField] private int maxGrabCount = 500;     // Prevent grabbing too many cells
+        [SerializeField] private float maxGrabDistance = 600f; // World units (3x shovel range)
 
         // Storage: materialId -> count of grabbed cells
         private Dictionary<byte, int> grabbedCells = new Dictionary<byte, int>();
@@ -67,21 +68,28 @@ namespace FallingSand
         {
             if (mouse == null || world == null) return;
 
-            // Only active when player has Shovel equipped
-            if (player != null && player.EquippedTool != ToolType.Shovel)
+            // Only active when Grabber is equipped
+            if (player == null || player.EquippedTool != ToolType.Grabber)
+                return;
+
+            // Range check - block grab/drop if cursor is too far from player
+            Vector2 mouseScreen = mouse.position.ReadValue();
+            Vector3 mouseWorld = mainCamera.ScreenToWorldPoint(new Vector3(mouseScreen.x, mouseScreen.y, 0));
+            float distToMouse = Vector2.Distance(transform.position, (Vector2)mouseWorld);
+            if (distToMouse > maxGrabDistance)
                 return;
 
             // Get current cell position under mouse
             Vector2Int cellPos = GetCellAtMouse();
 
-            // Grab on right mouse button press
-            if (mouse.rightButton.wasPressedThisFrame)
+            // Grab on left mouse button press
+            if (mouse.leftButton.wasPressedThisFrame)
             {
                 GrabCellsAtPosition(cellPos.x, cellPos.y);
                 isHolding = totalGrabbedCount > 0;
             }
             // Drop on release
-            else if (mouse.rightButton.wasReleasedThisFrame && isHolding)
+            else if (mouse.leftButton.wasReleasedThisFrame && isHolding)
             {
                 DropCellsAtPosition(cellPos.x, cellPos.y);
                 isHolding = false;
@@ -302,5 +310,7 @@ namespace FallingSand
         /// Returns the total count of grabbed cells.
         /// </summary>
         public int TotalGrabbedCount => totalGrabbedCount;
+
+        public float MaxGrabDistance => maxGrabDistance;
     }
 }

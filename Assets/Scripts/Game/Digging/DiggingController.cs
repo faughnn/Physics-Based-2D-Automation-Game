@@ -11,7 +11,7 @@ namespace FallingSand
     {
         [Header("Dig Settings")]
         [SerializeField] private float digRadius = 8f;
-        [SerializeField] private float maxDigDistance = 100f;
+        [SerializeField] private float maxDigDistance = 200f;
 
         [Header("Particle Settings")]
         [SerializeField] private float minUpwardVelocity = 3f;
@@ -25,6 +25,8 @@ namespace FallingSand
         private PlayerController player;
         private Camera mainCamera;
         private Mouse mouse;
+
+        public float MaxDigDistance => maxDigDistance;
 
         private SimulationManager Simulation => SimulationManager.Instance;
         private CellWorld World => Simulation?.World;

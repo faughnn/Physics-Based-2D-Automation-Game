@@ -13,6 +13,7 @@ namespace FallingSand
     public class BeltManager : IDisposable
     {
         private readonly CellWorld world;
+        private readonly TerrainColliderManager terrainColliders;
         private readonly int width;
 
         // Belt tile storage: position (y * width + x) → tile data
@@ -37,9 +38,10 @@ namespace FallingSand
         // This directly sets velocity rather than applying force (mimics belt carrying objects)
         public const float BeltCarrySpeed = 30f;
 
-        public BeltManager(CellWorld world, int initialCapacity = 64)
+        public BeltManager(CellWorld world, TerrainColliderManager terrainColliders, int initialCapacity = 64)
         {
             this.world = world;
+            this.terrainColliders = terrainColliders;
             this.width = world.width;
 
             beltTiles = new NativeHashMap<int, BeltTile>(initialCapacity * 64, Allocator.Persistent);
@@ -830,6 +832,7 @@ namespace FallingSand
                         world.cells[cellIndex] = cell;
 
                         world.MarkDirty(cx, cy);
+                        terrainColliders.MarkChunkDirtyAt(cx, cy);
                     }
                 }
 

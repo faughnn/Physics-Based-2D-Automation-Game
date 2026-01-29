@@ -62,6 +62,8 @@ namespace FallingSand
         public PlacementMode CurrentMode => currentMode;
         public sbyte BeltDirection => beltDirection;
 
+        private PlayerController playerController;
+
         private void Start()
         {
             simulation = SimulationManager.Instance;
@@ -71,7 +73,42 @@ namespace FallingSand
             if (mainCamera == null)
                 mainCamera = Camera.main;
 
+            playerController = GetComponent<PlayerController>();
+            if (playerController != null)
+                playerController.OnStructureEquipped += OnStructureEquipped;
+
             CreatePreviewObject();
+        }
+
+        private void OnDestroy()
+        {
+            if (playerController != null)
+                playerController.OnStructureEquipped -= OnStructureEquipped;
+
+            if (previewObject != null)
+                Destroy(previewObject);
+            if (previewTexture != null)
+                Destroy(previewTexture);
+        }
+
+        private void OnStructureEquipped(StructureType type)
+        {
+            switch (type)
+            {
+                case StructureType.Belt: SetMode(PlacementMode.Belt); break;
+                case StructureType.Lift: SetMode(PlacementMode.Lift); break;
+                case StructureType.Wall: SetMode(PlacementMode.Wall); break;
+                default: ExitPlacementMode(); break;
+            }
+        }
+
+        private void SetMode(PlacementMode mode)
+        {
+            currentMode = mode;
+            isDragging = false;
+            dragLockedY = -1;
+            dragLockedX = -1;
+            previewObject.SetActive(true);
         }
 
         private void Update()
@@ -92,45 +129,6 @@ namespace FallingSand
         private void HandleModeSelection()
         {
             if (keyboard == null) return;
-
-            // B key - Belt placement
-            if (keyboard.bKey.wasPressedThisFrame)
-            {
-                if (ProgressionManager.Instance != null && ProgressionManager.Instance.IsUnlocked(Ability.PlaceBelts))
-                {
-                    ToggleMode(PlacementMode.Belt);
-                }
-                else
-                {
-                    ShowLockedMessage("Belts not yet unlocked!");
-                }
-            }
-
-            // L key - Lift placement
-            if (keyboard.lKey.wasPressedThisFrame)
-            {
-                if (ProgressionManager.Instance != null && ProgressionManager.Instance.IsUnlocked(Ability.PlaceLifts))
-                {
-                    ToggleMode(PlacementMode.Lift);
-                }
-                else
-                {
-                    ShowLockedMessage("Lifts not yet unlocked!");
-                }
-            }
-
-            // W key - Wall placement (uses same unlock as Lifts)
-            if (keyboard.wKey.wasPressedThisFrame)
-            {
-                if (ProgressionManager.Instance != null && ProgressionManager.Instance.IsUnlocked(Ability.PlaceLifts))
-                {
-                    ToggleMode(PlacementMode.Wall);
-                }
-                else
-                {
-                    ShowLockedMessage("Walls not yet unlocked!");
-                }
-            }
 
             // F8 - Debug: unlock all structures immediately
             if (keyboard.f8Key.wasPressedThisFrame)
@@ -156,19 +154,6 @@ namespace FallingSand
                     beltDirection = -1;
                 if (keyboard.eKey.wasPressedThisFrame)
                     beltDirection = 1;
-            }
-        }
-
-        private void ToggleMode(PlacementMode mode)
-        {
-            if (currentMode == mode)
-            {
-                ExitPlacementMode();
-            }
-            else
-            {
-                currentMode = mode;
-                previewObject.SetActive(true);
             }
         }
 
@@ -522,12 +507,5 @@ namespace FallingSand
             GUI.Label(rect, lockedMessage, style);
         }
 
-        private void OnDestroy()
-        {
-            if (previewObject != null)
-                Destroy(previewObject);
-            if (previewTexture != null)
-                Destroy(previewTexture);
-        }
     }
 }

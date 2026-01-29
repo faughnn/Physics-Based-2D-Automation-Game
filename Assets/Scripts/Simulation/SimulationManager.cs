@@ -92,13 +92,13 @@ namespace FallingSand
             terrainColliders.Initialize(world);
 
             // Create belt manager
-            beltManager = new BeltManager(world);
+            beltManager = new BeltManager(world, terrainColliders);
 
             // Create lift manager
             liftManager = new LiftManager(world);
 
             // Create wall manager
-            wallManager = new WallManager(world);
+            wallManager = new WallManager(world, terrainColliders);
 
             // Create renderer
             GameObject rendererObj = new GameObject("CellRenderer");

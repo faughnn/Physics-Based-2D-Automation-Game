@@ -122,8 +122,8 @@ namespace FallingSand
         {
             return ability switch
             {
-                Ability.PlaceBelts => "BELTS UNLOCKED! Press B to place belts.",
-                Ability.PlaceLifts => "LIFTS UNLOCKED! Press L to place lifts.",
+                Ability.PlaceBelts => "BELTS UNLOCKED! Added to your inventory.",
+                Ability.PlaceLifts => "LIFTS UNLOCKED! Added to your inventory.",
                 Ability.PlaceFurnace => "FURNACE UNLOCKED!",
                 _ => $"{ability} UNLOCKED!"
             };

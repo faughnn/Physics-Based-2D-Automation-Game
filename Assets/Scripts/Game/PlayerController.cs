@@ -34,10 +34,12 @@ namespace FallingSand
         // Inventory
         private HashSet<ToolType> inventory = new HashSet<ToolType>();
         private ToolType equippedTool = ToolType.None;
+        private StructureType equippedStructure = StructureType.None;
 
         // Events for UI/feedback
         public event Action<ToolType> OnToolEquipped;
         public event Action<ToolType> OnToolCollected;
+        public event Action<StructureType> OnStructureEquipped;
 
         private void Awake()
         {
@@ -178,6 +180,11 @@ namespace FallingSand
         public ToolType EquippedTool => equippedTool;
 
         /// <summary>
+        /// Currently equipped structure (None if a tool is equipped).
+        /// </summary>
+        public StructureType EquippedStructure => equippedStructure;
+
+        /// <summary>
         /// All tools the player has collected.
         /// </summary>
         public IReadOnlyCollection<ToolType> Inventory => inventory;
@@ -192,16 +199,29 @@ namespace FallingSand
 
         /// <summary>
         /// Switch to a different tool from inventory.
+        /// Grabber is always available without being in inventory.
         /// </summary>
         public bool EquipTool(ToolType tool)
         {
-            if (tool == ToolType.None || inventory.Contains(tool))
-            {
-                equippedTool = tool;
-                OnToolEquipped?.Invoke(tool);
-                return true;
-            }
-            return false;  // Don't have this tool
+            if (tool != ToolType.None && tool != ToolType.Grabber && !inventory.Contains(tool))
+                return false;
+
+            equippedTool = tool;
+            equippedStructure = StructureType.None;
+            OnToolEquipped?.Invoke(tool);
+            OnStructureEquipped?.Invoke(StructureType.None);
+            return true;
+        }
+
+        /// <summary>
+        /// Equip a structure for placement. Unequips any tool.
+        /// </summary>
+        public void EquipStructure(StructureType structure)
+        {
+            equippedTool = ToolType.None;
+            equippedStructure = structure;
+            OnToolEquipped?.Invoke(ToolType.None);
+            OnStructureEquipped?.Invoke(structure);
         }
 
         private void OnTriggerEnter2D(Collider2D other)

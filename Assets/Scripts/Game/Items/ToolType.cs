@@ -4,6 +4,6 @@ namespace FallingSand
     {
         None = 0,
         Shovel = 1,
-        // Future: Pickaxe, Bucket, etc.
+        Grabber = 2,
     }
 }

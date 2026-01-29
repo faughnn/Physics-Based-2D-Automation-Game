@@ -26,6 +26,8 @@ namespace FallingSand
         private GameObject player;
         private Camera mainCamera;
         private LevelLoader levelLoader;
+        private Hotbar hotbar;
+        private InventoryMenu inventoryMenu;
 
         private void Start()
         {
@@ -82,15 +84,45 @@ namespace FallingSand
             // 12. Add structure placement controller to player
             player.AddComponent<StructurePlacementController>();
 
-            // 13. Create progression UI (if not already created)
+            // 13. Add tool range indicator to player
+            var rangeIndicator = player.AddComponent<ToolRangeIndicator>();
+            rangeIndicator.Initialize(
+                player.GetComponent<PlayerController>(),
+                player.GetComponent<DiggingController>(),
+                player.GetComponent<CellGrabSystem>()
+            );
+
+            // 14. Create game UI (Canvas, Hotbar, Inventory Menu)
+            CreateGameUI();
+
+            // 15. Create progression UI (if not already created)
             if (FindFirstObjectByType<ProgressionUI>() == null)
             {
                 GameObject uiObj = new GameObject("ProgressionUI");
                 uiObj.AddComponent<ProgressionUI>();
             }
 
-            // 14. Create debug overlay
+            // 16. Create debug overlay
             CreateDebugOverlay();
+        }
+
+        private void CreateGameUI()
+        {
+            var canvas = GameUIBuilder.CreateCanvas();
+            var playerCtrl = player.GetComponent<PlayerController>();
+            var progression = ProgressionManager.Instance;
+
+            // Hotbar
+            GameObject hotbarObj = new GameObject("Hotbar");
+            hotbarObj.transform.SetParent(canvas.transform, false);
+            hotbar = hotbarObj.AddComponent<Hotbar>();
+            hotbar.Initialize(playerCtrl, progression);
+
+            // Inventory Menu
+            GameObject menuObj = new GameObject("InventoryMenu");
+            menuObj.transform.SetParent(canvas.transform, false);
+            inventoryMenu = menuObj.AddComponent<InventoryMenu>();
+            inventoryMenu.Initialize(hotbar, playerCtrl, progression, canvas);
         }
 
         private void CreateDebugOverlay()

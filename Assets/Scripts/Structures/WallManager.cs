@@ -13,6 +13,7 @@ namespace FallingSand
     public class WallManager : IDisposable
     {
         private readonly CellWorld world;
+        private readonly TerrainColliderManager terrainColliders;
         private readonly int width;
         private readonly int height;
 
@@ -27,9 +28,10 @@ namespace FallingSand
 
         public NativeArray<WallTile> WallTiles => wallTiles;
 
-        public WallManager(CellWorld world, int initialCapacity = 64)
+        public WallManager(CellWorld world, TerrainColliderManager terrainColliders, int initialCapacity = 64)
         {
             this.world = world;
+            this.terrainColliders = terrainColliders;
             this.width = world.width;
             this.height = world.height;
 
@@ -241,6 +243,7 @@ namespace FallingSand
 
                         world.SetCell(cx, cy, Materials.Wall);
                         world.MarkDirty(cx, cy);
+                        terrainColliders.MarkChunkDirtyAt(cx, cy);
                     }
                 }
 
