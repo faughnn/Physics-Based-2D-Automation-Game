@@ -41,8 +41,17 @@ namespace FallingSand
             StructureType = StructureType.Lift,
         };
 
+        public static readonly ItemDefinition Wall = new ItemDefinition
+        {
+            Id = "wall",
+            DisplayName = "Wall",
+            Description = "Blocks material flow",
+            Category = ItemCategory.Structure,
+            StructureType = StructureType.Wall,
+        };
+
         public static readonly List<ItemDefinition> All = new List<ItemDefinition>
-            { Grabber, Shovel, Belt, Lift };
+            { Grabber, Shovel, Belt, Lift, Wall };
 
         public static IEnumerable<ItemDefinition> Tools =>
             All.Where(i => i.Category == ItemCategory.Tool);

@@ -38,11 +38,14 @@ namespace FallingSand
         private Sprite shovelSprite;
         private Sprite beltSprite;
         private Sprite liftSprite;
+        private Sprite wallSprite;
 
         public void Initialize(PlayerController player, ProgressionManager progression)
         {
             playerController = player;
             progressionManager = progression;
+
+            playerController.OnToolEquipped += OnToolEquippedExternally;
 
             CreateIconSprites();
             BuildUI();
@@ -52,11 +55,29 @@ namespace FallingSand
             slots[1] = ItemRegistry.Shovel;
             slots[2] = ItemRegistry.Belt;
             slots[3] = ItemRegistry.Lift;
-            // slots[4] = empty
+            slots[4] = ItemRegistry.Wall;
 
             selectedIndex = 0;
             RefreshSlotVisuals();
             EquipSlot(0);
+        }
+
+        private void OnDestroy()
+        {
+            if (playerController != null)
+                playerController.OnToolEquipped -= OnToolEquippedExternally;
+        }
+
+        private void OnToolEquippedExternally(ToolType tool)
+        {
+            for (int i = 0; i < SlotCount; i++)
+            {
+                if (slots[i] != null && slots[i].Category == ItemCategory.Tool && slots[i].ToolType == tool)
+                {
+                    selectedIndex = i;
+                    return;
+                }
+            }
         }
 
         private void Update()
@@ -296,6 +317,7 @@ namespace FallingSand
             if (item == ItemRegistry.Shovel) return shovelSprite;
             if (item == ItemRegistry.Belt) return beltSprite;
             if (item == ItemRegistry.Lift) return liftSprite;
+            if (item == ItemRegistry.Wall) return wallSprite;
             return null;
         }
 
@@ -305,6 +327,7 @@ namespace FallingSand
             shovelSprite = CreateProceduralIcon(DrawShovelIcon);
             beltSprite = CreateProceduralIcon(DrawBeltIcon);
             liftSprite = CreateProceduralIcon(DrawLiftIcon);
+            wallSprite = CreateProceduralIcon(DrawWallIcon);
         }
 
         private Sprite CreateProceduralIcon(System.Action<Color[]> drawFunc)
@@ -382,6 +405,49 @@ namespace FallingSand
                 if (y >= s) break;
                 pixels[y * s + (16 + i)] = Color.white;
                 pixels[y * s + (16 - i)] = Color.white;
+            }
+        }
+
+        private void DrawWallIcon(Color[] pixels)
+        {
+            const int s = 32;
+            Color brick = Color.white;
+            Color mortar = new Color(0.5f, 0.5f, 0.5f, 1f);
+
+            // Fill brick area with mortar color first
+            for (int y = 4; y < 28; y++)
+                for (int x = 4; x < 28; x++)
+                    pixels[y * s + x] = mortar;
+
+            // Draw brick rows (offset pattern)
+            int brickH = 5;
+            int mortarH = 1;
+            int rowStart = 4;
+            int row = 0;
+            while (rowStart + brickH <= 28)
+            {
+                bool offset = (row % 2) == 1;
+                int brickW = 10;
+                int mortarW = 2;
+                int xStart = 4 + (offset ? brickW / 2 : 0);
+                for (int x = xStart; x < 28; x++)
+                {
+                    int localX = x - xStart;
+                    if (localX % (brickW + mortarW) < brickW)
+                    {
+                        for (int y = rowStart; y < rowStart + brickH; y++)
+                            pixels[y * s + x] = brick;
+                    }
+                }
+                // Fill the offset gap on the left for offset rows
+                if (offset)
+                {
+                    for (int x = 4; x < 4 + brickW / 2; x++)
+                        for (int y = rowStart; y < rowStart + brickH; y++)
+                            pixels[y * s + x] = brick;
+                }
+                rowStart += brickH + mortarH;
+                row++;
             }
         }
     }
