@@ -213,13 +213,15 @@ namespace FallingSand
             float unityGravity = PhysicsSettings.GetUnityGravity();
             Physics2D.gravity = new Vector2(0, unityGravity);
 
-            // BoxCollider2D - 8x16 cells = 16x32 world units
+            // BoxCollider2D - player is 2/3 structure block width, 2 blocks tall
+            float playerWidth = 8 * CoordinateUtils.CellToWorldScale * (2f / 3f);
+            float playerHeight = 32;
             var collider = player.AddComponent<BoxCollider2D>();
-            collider.size = new Vector2(16, 32);
+            collider.size = new Vector2(playerWidth, playerHeight);
 
             // Visual - SpriteRenderer with a white square sprite, tinted
             var sr = player.AddComponent<SpriteRenderer>();
-            sr.sprite = CreateRectSprite(16, 32);
+            sr.sprite = CreateRectSprite(Mathf.RoundToInt(playerWidth), Mathf.RoundToInt(playerHeight));
             sr.color = playerColor;
             sr.sortingOrder = 10;  // Render above terrain
 

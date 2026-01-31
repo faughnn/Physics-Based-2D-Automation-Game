@@ -125,39 +125,43 @@ namespace FallingSand
                 return;
             }
 
-            // Generate polygon outline using marching squares
-            Vector2[] outline = MarchingSquares.GenerateOutline(staticPixels);
+            // Generate polygon outlines using marching squares (handles disconnected regions)
+            List<Vector2[]> outlines = MarchingSquares.GenerateOutlines(staticPixels);
 
-            if (outline.Length < 3)
+            if (outlines.Count == 0)
             {
-                // Not enough points for a polygon
+                // No valid outlines - remove collider if it exists
+                if (chunkColliders.TryGetValue(chunkIndex, out PolygonCollider2D stale))
+                {
+                    Destroy(stale.gameObject);
+                    chunkColliders.Remove(chunkIndex);
+                }
                 return;
             }
 
-            // Scale and offset the outline to world coordinates
-            // Chunk origin in cells
+            // Scale and offset each outline to world coordinates
             int chunkCellX = chunkX * CellWorld.ChunkSize;
             int chunkCellY = chunkY * CellWorld.ChunkSize;
 
-            // Convert cell coords to world coords
-            // worldX = cellX * 2 - worldWidth
-            // worldY = worldHeight - cellY * 2
-            for (int i = 0; i < outline.Length; i++)
+            for (int o = 0; o < outlines.Count; o++)
             {
-                // outline is in local cell coordinates relative to chunk
-                // Add chunk offset, then convert to world
-                float cellX = outline[i].x + chunkCellX + CellWorld.ChunkSize / 2f;
-                float cellY = outline[i].y + chunkCellY + CellWorld.ChunkSize / 2f;
-
-                outline[i] = CoordinateUtils.CellToWorld(cellX, cellY, world.width, world.height);
+                Vector2[] outline = outlines[o];
+                for (int i = 0; i < outline.Length; i++)
+                {
+                    float cellX = outline[i].x + chunkCellX + CellWorld.ChunkSize / 2f;
+                    float cellY = outline[i].y + chunkCellY + CellWorld.ChunkSize / 2f;
+                    outline[i] = CoordinateUtils.CellToWorld(cellX, cellY, world.width, world.height);
+                }
             }
 
             // Get or create collider
             PolygonCollider2D collider;
             if (chunkColliders.TryGetValue(chunkIndex, out collider))
             {
-                // Update existing
-                collider.SetPath(0, outline);
+                // Update existing - set path count first to clear stale paths
+                collider.pathCount = outlines.Count;
+                for (int i = 0; i < outlines.Count; i++)
+                    collider.SetPath(i, outlines[i]);
             }
             else
             {
@@ -167,7 +171,9 @@ namespace FallingSand
                 colliderObj.transform.position = Vector3.zero;
 
                 collider = colliderObj.AddComponent<PolygonCollider2D>();
-                collider.SetPath(0, outline);
+                collider.pathCount = outlines.Count;
+                for (int i = 0; i < outlines.Count; i++)
+                    collider.SetPath(i, outlines[i]);
 
                 chunkColliders[chunkIndex] = collider;
             }

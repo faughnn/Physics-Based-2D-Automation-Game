@@ -19,6 +19,9 @@ namespace FallingSand
         // Storage: materialId -> count of grabbed cells
         private Dictionary<byte, int> grabbedCells = new Dictionary<byte, int>();
 
+        // Offset storage for preview: each grabbed cell's offset from grab center + material
+        private List<(int dx, int dy, byte materialId)> grabbedCellOffsets = new List<(int, int, byte)>();
+
         // State
         private bool isHolding = false;
         private int totalGrabbedCount = 0;
@@ -30,8 +33,10 @@ namespace FallingSand
         private Mouse mouse;
         private PlayerController player;
 
-        // GUI style for the count label
-        private GUIStyle labelStyle;
+        // Preview rendering
+        private GameObject previewObject;
+        private SpriteRenderer previewRenderer;
+        private Texture2D previewTexture;
 
         private void Start()
         {
@@ -54,14 +59,6 @@ namespace FallingSand
             {
                 player = FindFirstObjectByType<PlayerController>();
             }
-
-            // Initialize GUI style
-            labelStyle = new GUIStyle
-            {
-                fontSize = 16,
-                fontStyle = FontStyle.Bold,
-                normal = { textColor = Color.white }
-            };
         }
 
         private void Update()
@@ -88,31 +85,103 @@ namespace FallingSand
             {
                 GrabCellsAtPosition(cellPos.x, cellPos.y);
                 isHolding = totalGrabbedCount > 0;
+                if (isHolding)
+                    CreateGrabPreview();
             }
             // Drop on release
             else if (mouse.leftButton.wasReleasedThisFrame && isHolding)
             {
                 DropCellsAtPosition(cellPos.x, cellPos.y);
                 isHolding = false;
+                DestroyGrabPreview();
             }
         }
 
-        private void OnGUI()
+        private void LateUpdate()
         {
-            if (!isHolding || totalGrabbedCount == 0)
+            if (previewObject == null) return;
+
+            // Hide preview if tool switched away from Grabber
+            if (player == null || player.EquippedTool != ToolType.Grabber)
+            {
+                previewObject.SetActive(false);
                 return;
+            }
 
-            if (mouse == null) return;
+            previewObject.SetActive(true);
 
-            Vector2 mousePos = mouse.position.ReadValue();
+            if (mouse == null || mainCamera == null) return;
+            Vector2 mouseScreen = mouse.position.ReadValue();
+            Vector3 mouseWorld = mainCamera.ScreenToWorldPoint(new Vector3(mouseScreen.x, mouseScreen.y, 0));
+            previewObject.transform.position = new Vector3(mouseWorld.x, mouseWorld.y, 0f);
+        }
 
-            // Offset from cursor
-            Vector2 labelPos = new Vector2(mousePos.x + 20, Screen.height - mousePos.y - 20);
+        private void CreateGrabPreview()
+        {
+            if (grabbedCellOffsets.Count == 0) return;
 
-            // Build display string
-            string text = $"Holding: {totalGrabbedCount}";
+            // Compute bounding box
+            int minDx = int.MaxValue, maxDx = int.MinValue;
+            int minDy = int.MaxValue, maxDy = int.MinValue;
+            foreach (var (dx, dy, _) in grabbedCellOffsets)
+            {
+                if (dx < minDx) minDx = dx;
+                if (dx > maxDx) maxDx = dx;
+                if (dy < minDy) minDy = dy;
+                if (dy > maxDy) maxDy = dy;
+            }
 
-            GUI.Label(new Rect(labelPos.x, labelPos.y, 200, 100), text, labelStyle);
+            int texWidth = maxDx - minDx + 1;
+            int texHeight = maxDy - minDy + 1;
+
+            // Create texture
+            previewTexture = new Texture2D(texWidth, texHeight, TextureFormat.RGBA32, false);
+            previewTexture.filterMode = FilterMode.Point;
+
+            // Fill with transparent
+            var clearPixels = new Color[texWidth * texHeight];
+            previewTexture.SetPixels(clearPixels);
+
+            // Set each grabbed cell pixel
+            foreach (var (dx, dy, matId) in grabbedCellOffsets)
+            {
+                int px = dx - minDx;
+                // Flip Y: cell Y+ is down, texture Y+ is up
+                int py = (maxDy - minDy) - (dy - minDy);
+                Color c = world.materials[matId].baseColour;
+                c.a = 0.5f;
+                previewTexture.SetPixel(px, py, c);
+            }
+            previewTexture.Apply();
+
+            // Create sprite: pixelsPerUnit=0.5 means each pixel = 2 world units = 1 cell
+            Rect rect = new Rect(0, 0, texWidth, texHeight);
+            Vector2 pivot = new Vector2(
+                (float)(-minDx) / texWidth,
+                (float)(maxDy) / texHeight  // pivot at grab center in flipped coords
+            );
+            Sprite sprite = Sprite.Create(previewTexture, rect, pivot, 0.5f);
+
+            // Create game object
+            previewObject = new GameObject("GrabPreview");
+            previewRenderer = previewObject.AddComponent<SpriteRenderer>();
+            previewRenderer.sprite = sprite;
+            previewRenderer.sortingOrder = 100;
+        }
+
+        private void DestroyGrabPreview()
+        {
+            if (previewObject != null)
+            {
+                Destroy(previewObject);
+                previewObject = null;
+                previewRenderer = null;
+            }
+            if (previewTexture != null)
+            {
+                Destroy(previewTexture);
+                previewTexture = null;
+            }
         }
 
         /// <summary>
@@ -179,6 +248,7 @@ namespace FallingSand
 
                     if (IsCellGrabbable(x, y))
                     {
+                        grabbedCellOffsets.Add((dx, dy, world.cells[y * world.width + x].materialId));
                         GrabCell(x, y);
                     }
                 }
@@ -299,6 +369,7 @@ namespace FallingSand
         private void ClearGrabbedCells()
         {
             grabbedCells.Clear();
+            grabbedCellOffsets.Clear();
             totalGrabbedCount = 0;
         }
 

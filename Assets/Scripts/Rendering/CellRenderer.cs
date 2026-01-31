@@ -93,19 +93,19 @@ namespace FallingSand
         {
             if (worldShader == null)
             {
-                worldShader = Shader.Find("FallingSand/WorldRender");
+                worldShader = Resources.Load<Shader>("Shaders/WorldRender");
             }
 
             if (worldShader == null)
             {
                 Debug.LogError("[CellRenderer] WorldRender shader not found! Trying fallback...");
-                worldShader = Shader.Find("Unlit/Color");
+                worldShader = Shader.Find("Sprites/Default");
                 if (worldShader == null)
                 {
                     Debug.LogError("[CellRenderer] No fallback shader found either!");
                     return;
                 }
-                Debug.LogWarning("[CellRenderer] Using fallback Unlit/Color shader");
+                Debug.LogWarning("[CellRenderer] Using fallback Sprites/Default shader");
             }
 
             renderMaterial = new Material(worldShader);

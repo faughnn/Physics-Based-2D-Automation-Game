@@ -10,6 +10,111 @@ namespace FallingSand
     public static class MarchingSquares
     {
         /// <summary>
+        /// Generate multiple polygon outlines from a list of pixels.
+        /// Handles disconnected regions by extracting connected components.
+        /// Returns a list of outlines, each suitable for a PolygonCollider2D path.
+        /// </summary>
+        public static List<Vector2[]> GenerateOutlines(List<ClusterPixel> pixels)
+        {
+            var result = new List<Vector2[]>();
+            if (pixels == null || pixels.Count == 0)
+                return result;
+
+            // Find bounds of the pixel region
+            int minX = int.MaxValue, maxX = int.MinValue;
+            int minY = int.MaxValue, maxY = int.MinValue;
+
+            foreach (var pixel in pixels)
+            {
+                if (pixel.localX < minX) minX = pixel.localX;
+                if (pixel.localX > maxX) maxX = pixel.localX;
+                if (pixel.localY < minY) minY = pixel.localY;
+                if (pixel.localY > maxY) maxY = pixel.localY;
+            }
+
+            // Create a binary grid with 1-cell padding
+            int gridWidth = maxX - minX + 3;
+            int gridHeight = maxY - minY + 3;
+            bool[,] grid = new bool[gridWidth, gridHeight];
+
+            foreach (var pixel in pixels)
+            {
+                int gx = pixel.localX - minX + 1;
+                int gy = pixel.localY - minY + 1;
+                grid[gx, gy] = true;
+            }
+
+            // Track which cells have been assigned to a component
+            bool[,] visited = new bool[gridWidth, gridHeight];
+
+            // Find connected components via flood-fill (4-connected)
+            for (int sy = 0; sy < gridHeight; sy++)
+            {
+                for (int sx = 0; sx < gridWidth; sx++)
+                {
+                    if (!grid[sx, sy] || visited[sx, sy])
+                        continue;
+
+                    // Flood-fill this connected component
+                    var componentCells = new List<(int x, int y)>();
+                    var stack = new Stack<(int x, int y)>();
+                    stack.Push((sx, sy));
+                    visited[sx, sy] = true;
+
+                    while (stack.Count > 0)
+                    {
+                        var (cx, cy) = stack.Pop();
+                        componentCells.Add((cx, cy));
+
+                        // 4-connected neighbors
+                        if (cx > 0 && grid[cx - 1, cy] && !visited[cx - 1, cy])
+                        { visited[cx - 1, cy] = true; stack.Push((cx - 1, cy)); }
+                        if (cx < gridWidth - 1 && grid[cx + 1, cy] && !visited[cx + 1, cy])
+                        { visited[cx + 1, cy] = true; stack.Push((cx + 1, cy)); }
+                        if (cy > 0 && grid[cx, cy - 1] && !visited[cx, cy - 1])
+                        { visited[cx, cy - 1] = true; stack.Push((cx, cy - 1)); }
+                        if (cy < gridHeight - 1 && grid[cx, cy + 1] && !visited[cx, cy + 1])
+                        { visited[cx, cy + 1] = true; stack.Push((cx, cy + 1)); }
+                    }
+
+                    // Build a sub-grid for this component (with padding)
+                    int cMinX = int.MaxValue, cMaxX = int.MinValue;
+                    int cMinY = int.MaxValue, cMaxY = int.MinValue;
+                    foreach (var (cx, cy) in componentCells)
+                    {
+                        if (cx < cMinX) cMinX = cx;
+                        if (cx > cMaxX) cMaxX = cx;
+                        if (cy < cMinY) cMinY = cy;
+                        if (cy > cMaxY) cMaxY = cy;
+                    }
+
+                    int subW = cMaxX - cMinX + 3; // +2 padding +1 for size
+                    int subH = cMaxY - cMinY + 3;
+                    bool[,] subGrid = new bool[subW, subH];
+
+                    foreach (var (cx, cy) in componentCells)
+                    {
+                        subGrid[cx - cMinX + 1, cy - cMinY + 1] = true;
+                    }
+
+                    // The sub-grid offset relative to the original grid origin
+                    int subOffsetX = (minX - 1) + (cMinX - 1);
+                    int subOffsetY = (minY - 1) + (cMinY - 1);
+
+                    List<Vector2> contour = TraceContour(subGrid, subW, subH, subOffsetX, subOffsetY);
+                    List<Vector2> simplified = SimplifyContour(contour, 0.1f);
+
+                    if (simplified.Count >= 3)
+                    {
+                        result.Add(simplified.ToArray());
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// Generate a polygon outline from a list of cluster pixels.
         /// Returns vertices in local space (relative to center of mass at origin).
         /// </summary>

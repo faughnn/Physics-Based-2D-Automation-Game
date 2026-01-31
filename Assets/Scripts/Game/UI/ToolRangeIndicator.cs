@@ -173,8 +173,6 @@ namespace FallingSand
             }
 
             bool showAoe = cellRadius > 0f && ratio <= 1f;
-            if (showAoe && tool == ToolType.Grabber && grabSystem != null && grabSystem.IsHolding)
-                showAoe = false;
 
             if (showAoe)
             {
