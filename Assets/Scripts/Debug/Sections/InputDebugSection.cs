@@ -55,6 +55,15 @@ namespace FallingSand.Debugging
                     DrawLabel("[WALL MODE] Solid 8x8 blocks", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.gray);
                     lines++;
                 }
+                else if (sandbox.PistonMode)
+                {
+                    DrawLabel($"[PISTON MODE] Direction: {sandbox.PistonDirection}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.yellow);
+                    lines++;
+
+                    int pistonCount = sandbox.PistonManager?.PistonCount ?? 0;
+                    DrawLabel($"Pistons: {pistonCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
+                    lines++;
+                }
                 else
                 {
                     // Current material
@@ -63,7 +72,7 @@ namespace FallingSand.Debugging
                 }
 
                 // Control hints
-                DrawLabel("B: Belt | L: Lift | W: Wall | Q/E: Dir", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.gray);
+                DrawLabel("B: Belt | L: Lift | W: Wall | P: Piston | Q/E: Dir", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.gray);
                 lines++;
 
                 DrawLabel("1-6: Material | LMB/RMB: Paint", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.gray);

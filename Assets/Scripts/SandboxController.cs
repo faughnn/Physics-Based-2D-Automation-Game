@@ -40,6 +40,10 @@ namespace FallingSand
         // Wall placement mode
         private bool wallMode = false;
 
+        // Piston placement mode
+        private bool pistonMode = false;
+        private PistonDirection pistonDirection = PistonDirection.Right;
+
         // Input references
         private Mouse mouse;
         private Keyboard keyboard;
@@ -55,6 +59,9 @@ namespace FallingSand
         public LiftManager LiftManager => simulation?.LiftManager;
         public bool WallMode => wallMode;
         public WallManager WallManager => simulation?.WallManager;
+        public bool PistonMode => pistonMode;
+        public PistonDirection PistonDirection => pistonDirection;
+        public PistonManager PistonManager => simulation?.MachineManager?.Pistons;
 
         private void Start()
         {
@@ -196,6 +203,18 @@ namespace FallingSand
                     RemoveWallAtMouse();
                 }
             }
+            else if (pistonMode)
+            {
+                // Piston placement mode - 16x16 grid-aligned blocks
+                if (mouse.leftButton.isPressed)
+                {
+                    PlacePistonAtMouse();
+                }
+                else if (mouse.rightButton.isPressed)
+                {
+                    RemovePistonAtMouse();
+                }
+            }
             else
             {
                 // Normal paint mode
@@ -210,7 +229,7 @@ namespace FallingSand
             }
 
             // Adjust brush size with scroll wheel (only in paint mode)
-            if (!beltMode && !liftMode && !wallMode)
+            if (!beltMode && !liftMode && !wallMode && !pistonMode)
             {
                 float scroll = mouse.scroll.ReadValue().y;
                 if (scroll != 0)
@@ -224,42 +243,52 @@ namespace FallingSand
         {
             if (keyboard == null) return;
 
-            // B key toggles belt mode (turns off lift/wall mode)
+            // B key toggles belt mode (turns off lift/wall/piston mode)
             if (keyboard.bKey.wasPressedThisFrame)
             {
                 beltMode = !beltMode;
-                if (beltMode) { liftMode = false; wallMode = false; }
+                if (beltMode) { liftMode = false; wallMode = false; pistonMode = false; }
             }
 
-            // L key toggles lift mode (turns off belt/wall mode)
+            // L key toggles lift mode (turns off belt/wall/piston mode)
             if (keyboard.lKey.wasPressedThisFrame)
             {
                 liftMode = !liftMode;
-                if (liftMode) { beltMode = false; wallMode = false; }
+                if (liftMode) { beltMode = false; wallMode = false; pistonMode = false; }
             }
 
-            // W key toggles wall mode (turns off belt/lift mode)
+            // W key toggles wall mode (turns off belt/lift/piston mode)
             if (keyboard.wKey.wasPressedThisFrame)
             {
                 wallMode = !wallMode;
-                if (wallMode) { beltMode = false; liftMode = false; }
+                if (wallMode) { beltMode = false; liftMode = false; pistonMode = false; }
             }
 
-            // Q/E to rotate belt direction (belt mode only)
+            // P key toggles piston mode (turns off belt/lift/wall mode)
+            if (keyboard.pKey.wasPressedThisFrame)
+            {
+                pistonMode = !pistonMode;
+                if (pistonMode) { beltMode = false; liftMode = false; wallMode = false; }
+            }
+
+            // Q/E to rotate belt direction (belt mode) or piston direction (piston mode)
             if (beltMode)
             {
                 if (keyboard.qKey.wasPressedThisFrame)
-                {
                     beltDirection = -1;
-                }
                 if (keyboard.eKey.wasPressedThisFrame)
-                {
                     beltDirection = 1;
-                }
+            }
+            else if (pistonMode)
+            {
+                if (keyboard.qKey.wasPressedThisFrame)
+                    pistonDirection = (PistonDirection)(((int)pistonDirection + 3) % 4); // Cycle backwards
+                if (keyboard.eKey.wasPressedThisFrame)
+                    pistonDirection = (PistonDirection)(((int)pistonDirection + 1) % 4); // Cycle forwards
             }
 
-            // Number keys to select materials (only when not in belt, lift, or wall mode)
-            if (!beltMode && !liftMode && !wallMode)
+            // Number keys to select materials (only when not in structure placement mode)
+            if (!beltMode && !liftMode && !wallMode && !pistonMode)
             {
                 if (keyboard.digit1Key.wasPressedThisFrame) currentMaterial = Materials.Air;
                 if (keyboard.digit2Key.wasPressedThisFrame) currentMaterial = Materials.Stone;
@@ -420,6 +449,19 @@ namespace FallingSand
                 }
             }
         }
+
+        private void PlacePistonAtMouse()
+        {
+            Vector2Int cell = GetCellAtMouse();
+            simulation.MachineManager.Pistons.PlacePiston(cell.x, cell.y, pistonDirection);
+        }
+
+        private void RemovePistonAtMouse()
+        {
+            Vector2Int cell = GetCellAtMouse();
+            simulation.MachineManager.Pistons.RemovePiston(cell.x, cell.y);
+        }
+
         // Note: OnDestroy() removed - SimulationManager handles disposal of simulation resources
     }
 }

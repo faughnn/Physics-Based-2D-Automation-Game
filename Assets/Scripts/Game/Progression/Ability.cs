@@ -9,6 +9,6 @@ namespace FallingSand
         PlaceBelts = 1,
         PlaceLifts = 2,
         PlaceFurnace = 3,
-        // Future abilities can be added here
+        PlacePistons = 4,
     }
 }

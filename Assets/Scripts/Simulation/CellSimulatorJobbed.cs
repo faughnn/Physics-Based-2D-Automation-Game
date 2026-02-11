@@ -53,7 +53,8 @@ namespace FallingSand
         /// <param name="beltManager">Optional belt manager for belt-cluster interaction and ghost tile blocking</param>
         /// <param name="liftManager">Optional lift manager for lift-cluster interaction and lift zones</param>
         /// <param name="wallManager">Optional wall manager for ghost tile blocking</param>
-        public void Simulate(CellWorld world, ClusterManager clusterManager = null, BeltManager beltManager = null, LiftManager liftManager = null, WallManager wallManager = null)
+        /// <param name="machineManager">Optional machine manager for piston motor updates</param>
+        public void Simulate(CellWorld world, ClusterManager clusterManager = null, BeltManager beltManager = null, LiftManager liftManager = null, WallManager wallManager = null, MachineManager machineManager = null)
         {
             stopwatch.Restart();
 
@@ -77,6 +78,10 @@ namespace FallingSand
                         beltManager.ApplyForcesToClusters(clusterManager, world.width, world.height);
                     if (liftManager != null)
                         liftManager.ApplyForcesToClusters(clusterManager, world.width, world.height);
+
+                    // Update piston motors before physics step
+                    if (machineManager != null)
+                        machineManager.UpdateMotors();
 
                     clusterManager.StepAndSync(fixedStep);
                     physicsAccumulator -= fixedStep;

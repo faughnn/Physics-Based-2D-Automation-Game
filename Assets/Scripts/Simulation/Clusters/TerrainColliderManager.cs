@@ -212,9 +212,11 @@ namespace FallingSand
                         continue;
 
                     // Check if static and not passable (lifts are static but passable)
+                    // Also skip piston base/arm - they use their own colliders via MachineManager
                     MaterialDef mat = world.materials[cell.materialId];
                     if (mat.behaviour == BehaviourType.Static &&
-                        (mat.flags & MaterialFlags.Passable) == 0)
+                        (mat.flags & MaterialFlags.Passable) == 0 &&
+                        !Materials.IsPiston(cell.materialId))
                     {
                         // Store in local coordinates relative to chunk center
                         short localX = (short)(lx - centerX);

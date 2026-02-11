@@ -9,6 +9,7 @@ namespace FallingSand
         Belt,       // Placing belts
         Lift,       // Placing lifts
         Wall,       // Placing walls
+        Piston,     // Placing pistons
     }
 
     /// <summary>
@@ -39,6 +40,7 @@ namespace FallingSand
         private SimulationManager simulation;
         private PlacementMode currentMode = PlacementMode.None;
         private sbyte beltDirection = 1;  // +1 = right, -1 = left
+        private PistonDirection pistonDirection = PistonDirection.Right;
 
         // Drag state for structure placement
         private bool isDragging = false;
@@ -98,6 +100,7 @@ namespace FallingSand
                 case StructureType.Belt: SetMode(PlacementMode.Belt); break;
                 case StructureType.Lift: SetMode(PlacementMode.Lift); break;
                 case StructureType.Wall: SetMode(PlacementMode.Wall); break;
+                case StructureType.Piston: SetMode(PlacementMode.Piston); break;
                 default: ExitPlacementMode(); break;
             }
         }
@@ -137,6 +140,7 @@ namespace FallingSand
                 {
                     ProgressionManager.Instance.ForceUnlock(Ability.PlaceBelts);
                     ProgressionManager.Instance.ForceUnlock(Ability.PlaceLifts);
+                    ProgressionManager.Instance.ForceUnlock(Ability.PlacePistons);
                     Debug.Log("[Debug] All structures unlocked");
                 }
             }
@@ -148,13 +152,20 @@ namespace FallingSand
                     ExitPlacementMode();
             }
 
-            // Q/E to rotate belt direction (only in belt mode)
+            // Q/E to rotate belt direction (belt mode) or piston direction (piston mode)
             if (currentMode == PlacementMode.Belt)
             {
                 if (keyboard.qKey.wasPressedThisFrame)
                     beltDirection = -1;
                 if (keyboard.eKey.wasPressedThisFrame)
                     beltDirection = 1;
+            }
+            else if (currentMode == PlacementMode.Piston)
+            {
+                if (keyboard.qKey.wasPressedThisFrame)
+                    pistonDirection = (PistonDirection)(((int)pistonDirection + 3) % 4);
+                if (keyboard.eKey.wasPressedThisFrame)
+                    pistonDirection = (PistonDirection)(((int)pistonDirection + 1) % 4);
             }
         }
 
@@ -182,6 +193,9 @@ namespace FallingSand
                     break;
                 case PlacementMode.Wall:
                     HandleWallPlacement();
+                    break;
+                case PlacementMode.Piston:
+                    HandlePistonPlacement();
                     break;
             }
         }
@@ -317,12 +331,48 @@ namespace FallingSand
             }
         }
 
-        private void MarkStructureChunksDirty(int gridX, int gridY)
+        private void HandlePistonPlacement()
+        {
+            Vector2Int cellPos = GetCellAtMouse();
+
+            if (mouse.leftButton.isPressed)
+            {
+                TryPlacePiston(cellPos.x, cellPos.y);
+            }
+            else if (mouse.rightButton.isPressed)
+            {
+                TryRemovePiston(cellPos.x, cellPos.y);
+            }
+        }
+
+        private void TryPlacePiston(int x, int y)
+        {
+            int gridX = PistonManager.SnapToGrid(x);
+            int gridY = PistonManager.SnapToGrid(y);
+
+            if (simulation.MachineManager.Pistons.PlacePiston(gridX, gridY, pistonDirection))
+            {
+                MarkStructureChunksDirty(gridX, gridY, PistonManager.BlockSize);
+            }
+        }
+
+        private void TryRemovePiston(int x, int y)
+        {
+            int gridX = PistonManager.SnapToGrid(x);
+            int gridY = PistonManager.SnapToGrid(y);
+
+            if (simulation.MachineManager.Pistons.RemovePiston(gridX, gridY))
+            {
+                MarkStructureChunksDirty(gridX, gridY, PistonManager.BlockSize);
+            }
+        }
+
+        private void MarkStructureChunksDirty(int gridX, int gridY, int blockSize = 8)
         {
             var terrainColliders = simulation.TerrainColliders;
-            for (int dy = 0; dy < 8; dy++)
+            for (int dy = 0; dy < blockSize; dy++)
             {
-                for (int dx = 0; dx < 8; dx++)
+                for (int dx = 0; dx < blockSize; dx++)
                 {
                     terrainColliders.MarkChunkDirtyAt(gridX + dx, gridY + dy);
                 }
@@ -346,17 +396,25 @@ namespace FallingSand
                 gridX = isDragging && dragLockedX >= 0 ? dragLockedX : LiftManager.SnapToGrid(cellPos.x);
                 gridY = LiftManager.SnapToGrid(cellPos.y);
             }
-            else // Wall mode - simple grid snap
+            else if (currentMode == PlacementMode.Piston)
+            {
+                gridX = PistonManager.SnapToGrid(cellPos.x);
+                gridY = PistonManager.SnapToGrid(cellPos.y);
+            }
+            else // Wall mode
             {
                 gridX = WallManager.SnapToGrid(cellPos.x);
                 gridY = WallManager.SnapToGrid(cellPos.y);
             }
 
-            // Position preview at center of 8x8 block
-            Vector2 worldPos = CoordinateUtils.CellToWorld(gridX + 3.5f, gridY + 3.5f,
+            // Position preview at center of block
+            float halfBlock = (currentMode == PlacementMode.Piston ? 8f : 4f) - 0.5f;
+            Vector2 worldPos = CoordinateUtils.CellToWorld(gridX + halfBlock, gridY + halfBlock,
                 simulation.WorldWidth, simulation.WorldHeight);
 
             previewObject.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
+            previewObject.transform.localScale = currentMode == PlacementMode.Piston
+                ? new Vector3(2f, 2f, 1f) : Vector3.one;
 
             // Check if placement is valid
             PlacementResult result = CanPlaceStructureAt(gridX, gridY);
@@ -371,18 +429,19 @@ namespace FallingSand
         private PlacementResult CanPlaceStructureAt(int gridX, int gridY)
         {
             var world = simulation.World;
+            int blockSize = currentMode == PlacementMode.Piston ? PistonManager.BlockSize : 8;
 
             // Check bounds
             if (!world.IsInBounds(gridX, gridY) ||
-                !world.IsInBounds(gridX + 7, gridY + 7))
+                !world.IsInBounds(gridX + blockSize - 1, gridY + blockSize - 1))
                 return PlacementResult.Invalid;
 
             bool anyGhost = false;
 
             // Check if area is clear
-            for (int dy = 0; dy < 8; dy++)
+            for (int dy = 0; dy < blockSize; dy++)
             {
-                for (int dx = 0; dx < 8; dx++)
+                for (int dx = 0; dx < blockSize; dx++)
                 {
                     int cx = gridX + dx;
                     int cy = gridY + dy;
@@ -397,6 +456,10 @@ namespace FallingSand
 
                     // Check for existing wall
                     if (simulation.WallManager.HasWallAt(cx, cy))
+                        return PlacementResult.Invalid;
+
+                    // Check for existing piston
+                    if (simulation.MachineManager.HasMachineAt(cx, cy))
                         return PlacementResult.Invalid;
 
                     byte mat = world.GetCell(cx, cy);
@@ -478,6 +541,7 @@ namespace FallingSand
                 PlacementMode.Belt => $"BELT MODE (Dir: {(beltDirection > 0 ? "Right" : "Left")}) - Q/E rotate, LMB place, RMB remove, ESC cancel",
                 PlacementMode.Lift => "LIFT MODE - LMB place, RMB remove, ESC cancel",
                 PlacementMode.Wall => "WALL MODE - LMB place, RMB remove, ESC cancel",
+                PlacementMode.Piston => $"PISTON MODE (Dir: {pistonDirection}) - Q/E rotate, LMB place, RMB remove, ESC cancel",
                 _ => ""
             };
 

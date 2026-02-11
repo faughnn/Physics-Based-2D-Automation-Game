@@ -71,6 +71,8 @@ namespace FallingSand
         public const byte LiftUp = 19;          // Lift force zone (dark stripe)
         public const byte LiftUpLight = 20;     // Lift force zone (light stripe)
         public const byte Wall = 21;            // Solid wall structure
+        public const byte PistonBase = 22;      // Piston base (dark metallic, static)
+        public const byte PistonArm = 23;       // Piston arm/plate (lighter metallic, static)
 
         public const int Count = 256;  // Maximum materials
 
@@ -103,6 +105,14 @@ namespace FallingSand
         /// Checks if a material is soft terrain that structures can ghost through.
         /// Includes diggable static (Ground), powders (Sand, Dirt), and liquids (Water).
         /// </summary>
+        /// <summary>
+        /// Checks if a material ID represents any part of a piston.
+        /// </summary>
+        public static bool IsPiston(byte materialId)
+        {
+            return materialId == PistonBase || materialId == PistonArm;
+        }
+
         public static bool IsSoftTerrain(byte materialId)
         {
             return materialId == Ground ||
@@ -294,6 +304,26 @@ namespace FallingSand
                 behaviour = BehaviourType.Static,
                 flags = MaterialFlags.None,
                 baseColour = new Color32(70, 70, 80, 255),  // Dark gray, distinct from stone
+                colourVariation = 5,
+            };
+
+            // Piston base - dark metallic static block
+            defs[PistonBase] = new MaterialDef
+            {
+                density = 255,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.None,
+                baseColour = new Color32(55, 55, 65, 255),  // Dark metallic
+                colourVariation = 3,
+            };
+
+            // Piston arm - lighter metallic (used by cluster pixels)
+            defs[PistonArm] = new MaterialDef
+            {
+                density = 255,
+                behaviour = BehaviourType.Static,
+                flags = MaterialFlags.None,
+                baseColour = new Color32(120, 120, 140, 255),  // Lighter metallic
                 colourVariation = 5,
             };
 

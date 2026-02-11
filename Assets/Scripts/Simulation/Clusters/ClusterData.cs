@@ -34,6 +34,9 @@ namespace FallingSand
         // Lift interaction - set by LiftManager before physics, used by ClusterManager after physics
         [HideInInspector] public bool isOnLift;
 
+        // Machine part - arm clusters driven by joints should never be force-slept
+        [HideInInspector] public bool isMachinePart;
+
         /// <summary>
         /// World position from Rigidbody2D.
         /// </summary>

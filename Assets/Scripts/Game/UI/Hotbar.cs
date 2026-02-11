@@ -6,7 +6,7 @@ namespace FallingSand
 {
     public class Hotbar : MonoBehaviour
     {
-        private const int SlotCount = 5;
+        private const int SlotCount = 6;
         private const float SlotSize = 64f;
         private const float SlotPadding = 8f;
         private const float BottomMargin = 20f;
@@ -39,6 +39,7 @@ namespace FallingSand
         private Sprite beltSprite;
         private Sprite liftSprite;
         private Sprite wallSprite;
+        private Sprite pistonSprite;
 
         public void Initialize(PlayerController player, ProgressionManager progression)
         {
@@ -56,6 +57,7 @@ namespace FallingSand
             slots[2] = ItemRegistry.Belt;
             slots[3] = ItemRegistry.Lift;
             slots[4] = ItemRegistry.Wall;
+            slots[5] = ItemRegistry.Piston;
 
             selectedIndex = 0;
             RefreshSlotVisuals();
@@ -90,6 +92,7 @@ namespace FallingSand
             if (Keyboard.current.digit3Key.wasPressedThisFrame) SelectSlot(2);
             if (Keyboard.current.digit4Key.wasPressedThisFrame) SelectSlot(3);
             if (Keyboard.current.digit5Key.wasPressedThisFrame) SelectSlot(4);
+            if (Keyboard.current.digit6Key.wasPressedThisFrame) SelectSlot(5);
 
             // Scroll wheel cycling
             if (Mouse.current != null && !GameInput.IsPointerOverUI())
@@ -159,6 +162,7 @@ namespace FallingSand
                 case StructureType.Belt: return Ability.PlaceBelts;
                 case StructureType.Lift: return Ability.PlaceLifts;
                 case StructureType.Wall: return Ability.PlaceLifts;
+                case StructureType.Piston: return Ability.PlacePistons;
                 default: return Ability.None;
             }
         }
@@ -318,6 +322,7 @@ namespace FallingSand
             if (item == ItemRegistry.Belt) return beltSprite;
             if (item == ItemRegistry.Lift) return liftSprite;
             if (item == ItemRegistry.Wall) return wallSprite;
+            if (item == ItemRegistry.Piston) return pistonSprite;
             return null;
         }
 
@@ -328,6 +333,7 @@ namespace FallingSand
             beltSprite = CreateProceduralIcon(DrawBeltIcon);
             liftSprite = CreateProceduralIcon(DrawLiftIcon);
             wallSprite = CreateProceduralIcon(DrawWallIcon);
+            pistonSprite = CreateProceduralIcon(DrawPistonIcon);
         }
 
         private Sprite CreateProceduralIcon(System.Action<Color[]> drawFunc)
@@ -450,5 +456,34 @@ namespace FallingSand
                 row++;
             }
         }
+
+        private void DrawPistonIcon(Color[] pixels)
+        {
+            const int s = 32;
+            Color baseColor = new Color(0.6f, 0.6f, 0.7f, 1f);
+            Color armColor = Color.white;
+
+            // Base block (left side)
+            for (int y = 6; y < 26; y++)
+                for (int x = 4; x < 14; x++)
+                    pixels[y * s + x] = baseColor;
+
+            // Arm (extending right from base)
+            for (int y = 12; y < 20; y++)
+                for (int x = 14; x < 28; x++)
+                    pixels[y * s + x] = armColor;
+
+            // Arrow on arm pointing right
+            for (int i = 0; i < 4; i++)
+            {
+                int ax = 24 + i;
+                if (ax < s)
+                {
+                    if (16 + i < s) pixels[(16 + i) * s + ax] = baseColor;
+                    if (16 - i >= 0) pixels[(16 - i) * s + ax] = baseColor;
+                }
+            }
+        }
     }
 }
+

@@ -21,6 +21,7 @@ namespace FallingSand
         private BeltManager beltManager;
         private LiftManager liftManager;
         private WallManager wallManager;
+        private MachineManager machineManager;
         private CellRenderer cellRenderer;
         private GhostStructureRenderer ghostRenderer;
 
@@ -36,6 +37,7 @@ namespace FallingSand
         public BeltManager BeltManager => beltManager;
         public LiftManager LiftManager => liftManager;
         public WallManager WallManager => wallManager;
+        public MachineManager MachineManager => machineManager;
         public CellRenderer CellRenderer => cellRenderer;
         public int WorldWidth => worldWidth;
         public int WorldHeight => worldHeight;
@@ -100,6 +102,10 @@ namespace FallingSand
             // Create wall manager
             wallManager = new WallManager(world, terrainColliders);
 
+            // Create machine manager (pistons, etc.)
+            machineManager = new MachineManager();
+            machineManager.Initialize(world, clusterManager, terrainColliders);
+
             // Create renderer
             GameObject rendererObj = new GameObject("CellRenderer");
             cellRenderer = rendererObj.AddComponent<CellRenderer>();
@@ -146,7 +152,10 @@ namespace FallingSand
             // beltManager applies horizontal force to clusters resting on belts
             // liftManager applies upward force to cells/clusters in lift zones
             // Note: Cell sim group timings are handled internally in CellSimulatorJobbed
-            simulator.Simulate(world, clusterManager, beltManager, liftManager, wallManager);
+            simulator.Simulate(world, clusterManager, beltManager, liftManager, wallManager, machineManager);
+
+            // Update piston shaft visuals
+            machineManager?.UpdateVisuals();
 
             // Simulate belt movement (Burst-compiled parallel job)
             PerformanceProfiler.StartTiming(TimingSlot.BeltSimulation);
@@ -189,6 +198,7 @@ namespace FallingSand
                 instance = null;
             }
 
+            machineManager?.Dispose();
             wallManager?.Dispose();
             liftManager?.Dispose();
             beltManager?.Dispose();

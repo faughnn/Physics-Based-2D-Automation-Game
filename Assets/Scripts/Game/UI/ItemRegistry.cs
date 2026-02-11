@@ -50,8 +50,17 @@ namespace FallingSand
             StructureType = StructureType.Wall,
         };
 
+        public static readonly ItemDefinition Piston = new ItemDefinition
+        {
+            Id = "piston",
+            DisplayName = "Piston",
+            Description = "Extends and retracts an arm to push materials",
+            Category = ItemCategory.Structure,
+            StructureType = StructureType.Piston,
+        };
+
         public static readonly List<ItemDefinition> All = new List<ItemDefinition>
-            { Grabber, Shovel, Belt, Lift, Wall };
+            { Grabber, Shovel, Belt, Lift, Wall, Piston };
 
         public static IEnumerable<ItemDefinition> Tools =>
             All.Where(i => i.Category == ItemCategory.Tool);

@@ -12,5 +12,6 @@ namespace FallingSand
         Furnace = 3, // Future
         Press = 4,   // Future
         Wall = 5,
+        Piston = 6,
     }
 }

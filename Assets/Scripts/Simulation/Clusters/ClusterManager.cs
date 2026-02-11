@@ -81,6 +81,9 @@ namespace FallingSand
         {
             if (cluster.rb == null) return false;
 
+            // Machine parts (piston plates) are kinematic — always sync their pixels
+            if (cluster.isMachinePart) return false;
+
             // Must be sleeping
             if (!cluster.rb.IsSleeping()) return false;
 
@@ -211,9 +214,9 @@ namespace FallingSand
 
                         if (cluster.lowVelocityFrames > 30)  // ~0.5 seconds at 60fps
                         {
-                            // Don't sleep if cluster is on a belt or lift - they need to keep moving it
+                            // Don't sleep if cluster is on a belt/lift or is a machine part (e.g. piston arm)
                             // Use cached flags (set by BeltManager/LiftManager BEFORE physics step)
-                            if (cluster.isOnBelt || cluster.isOnLift)
+                            if (cluster.isOnBelt || cluster.isOnLift || cluster.isMachinePart)
                             {
                                 cluster.lowVelocityFrames = 0;
                                 continue;
