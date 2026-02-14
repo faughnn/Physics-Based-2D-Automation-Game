@@ -80,8 +80,8 @@ namespace FallingSand
             // Get current cell position under mouse
             Vector2Int cellPos = GetCellAtMouse();
 
-            // Grab on left mouse button press
-            if (mouse.leftButton.wasPressedThisFrame)
+            // Grab on left mouse button press (skip if already holding material)
+            if (mouse.leftButton.wasPressedThisFrame && !isHolding)
             {
                 GrabCellsAtPosition(cellPos.x, cellPos.y);
                 isHolding = totalGrabbedCount > 0;
@@ -92,8 +92,11 @@ namespace FallingSand
             else if (mouse.leftButton.wasReleasedThisFrame && isHolding)
             {
                 DropCellsAtPosition(cellPos.x, cellPos.y);
-                isHolding = false;
-                DestroyGrabPreview();
+                if (totalGrabbedCount == 0)
+                {
+                    isHolding = false;
+                    DestroyGrabPreview();
+                }
             }
         }
 
@@ -282,7 +285,7 @@ namespace FallingSand
                 return;
 
             int spawned = 0;
-            int maxRing = Mathf.CeilToInt(Mathf.Sqrt(totalGrabbedCount)) + 10; // Enough rings to place all cells
+            int maxRing = Mathf.CeilToInt(Mathf.Sqrt(totalGrabbedCount)) * 2 + 10; // Wide search for congested areas
 
             for (int ring = 0; ring <= maxRing && spawned < totalGrabbedCount; ring++)
             {
@@ -303,8 +306,11 @@ namespace FallingSand
                 }
             }
 
-            // Clear any remaining (couldn't place all)
-            ClearGrabbedCells();
+            // Only clear if everything was placed
+            if (totalGrabbedCount == 0)
+            {
+                ClearGrabbedCells();
+            }
         }
 
         /// <summary>

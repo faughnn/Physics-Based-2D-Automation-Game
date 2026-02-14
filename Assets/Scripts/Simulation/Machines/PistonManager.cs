@@ -24,11 +24,15 @@ namespace FallingSand
         public const float ShaftThicknessWorld = 4f;
         private static readonly Color ShaftColor = new Color(0.5f, 0.5f, 0.55f);
 
+        // Force applied to clusters blocking the piston
+        private const float ClusterPushForce = 800f;
+
         private CellWorld world;
         private ClusterManager clusterManager;
         private TerrainColliderManager terrainColliders;
         private readonly List<PistonData> pistons = new List<PistonData>();
         private readonly int[] pushChainBuffer = new int[BlockSize];
+        private readonly HashSet<ushort> detectedClusterIds = new HashSet<ushort>();
         private Sprite shaftSprite;
 
         public int PistonCount => pistons.Count;
@@ -253,11 +257,28 @@ namespace FallingSand
                 if (desiredFill > currentFill)
                 {
                     // Extending — push materials ahead and advance one cell
+                    detectedClusterIds.Clear();
                     if (TryPushAndExtend(piston))
                     {
                         WriteFillSlice(piston, currentFill);
                         piston.lastFillExtent = currentFill + 1;
                         piston.currentStrokeT = (currentFill + 1f) / MaxTravel;
+                    }
+                    else if (detectedClusterIds.Count > 0)
+                    {
+                        // Stalled against clusters — apply force in push direction
+                        Vector2 pushDir = GetPushDirectionWorld(piston.direction);
+                        foreach (ushort clusterId in detectedClusterIds)
+                        {
+                            ClusterData cluster = clusterManager.GetCluster(clusterId);
+                            if (cluster == null || cluster.isMachinePart) continue;
+                            if (cluster.rb == null) continue;
+
+                            cluster.rb.AddForce(pushDir * ClusterPushForce);
+                            // Wake the cluster so it responds to the force
+                            if (cluster.rb.IsSleeping())
+                                cluster.rb.WakeUp();
+                        }
                     }
                 }
                 else if (desiredFill < currentFill)
@@ -276,6 +297,21 @@ namespace FallingSand
 
                 // Update fill collider
                 UpdateFillCollider(piston);
+            }
+        }
+
+        /// <summary>
+        /// Returns the Unity world-space push direction for a piston direction.
+        /// </summary>
+        private static Vector2 GetPushDirectionWorld(PistonDirection direction)
+        {
+            switch (direction)
+            {
+                case PistonDirection.Right: return Vector2.right;
+                case PistonDirection.Left:  return Vector2.left;
+                case PistonDirection.Down:  return Vector2.down;  // Cell Down = Unity Down
+                case PistonDirection.Up:    return Vector2.up;    // Cell Up = Unity Up
+                default: return Vector2.zero;
             }
         }
 
@@ -415,7 +451,8 @@ namespace FallingSand
         /// Attempts to push materials ahead of the plate and extend one cell.
         /// For each leading-edge cell, shifts the chain of non-static cells forward
         /// by one in the push direction. Stalls if any row is completely blocked
-        /// (hits a static material or world edge with no air gap).
+        /// (hits a static material, cluster cell, or world edge with no air gap).
+        /// Populates detectedClusterIds when cluster cells cause a stall.
         /// </summary>
         private bool TryPushAndExtend(PistonData piston)
         {
@@ -435,8 +472,16 @@ namespace FallingSand
 
                 if (!world.IsInBounds(cx, cy)) return false;
 
-                byte mat = world.GetCell(cx, cy);
-                if (mat == Materials.Air)
+                Cell leadCell = world.cells[cy * world.width + cx];
+
+                // Cluster cells block the piston — they're managed by physics, not cell pushing
+                if (leadCell.ownerId != 0)
+                {
+                    detectedClusterIds.Add(leadCell.ownerId);
+                    return false;
+                }
+
+                if (leadCell.materialId == Materials.Air)
                 {
                     pushChainBuffer[i] = 0;
                     continue;
@@ -454,15 +499,23 @@ namespace FallingSand
 
                     if (!world.IsInBounds(sx, sy)) break;
 
-                    byte sMat = world.GetCell(sx, sy);
-                    if (sMat == Materials.Air)
+                    Cell scanCell = world.cells[sy * world.width + sx];
+
+                    // Cluster cells block the push chain
+                    if (scanCell.ownerId != 0)
+                    {
+                        detectedClusterIds.Add(scanCell.ownerId);
+                        break;
+                    }
+
+                    if (scanCell.materialId == Materials.Air)
                     {
                         foundAir = true;
                         break;
                     }
 
                     // Static materials block the push chain
-                    if (world.materials[sMat].behaviour == BehaviourType.Static)
+                    if (world.materials[scanCell.materialId].behaviour == BehaviourType.Static)
                         break;
 
                     chainLen++;

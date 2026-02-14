@@ -133,6 +133,12 @@ namespace FallingSand
                 }
             }
 
+            // Rebuild affected terrain colliders immediately so the physics step
+            // this frame uses up-to-date geometry (prevents player fall-through)
+            if (cellsDug > 0)
+            {
+                terrainColliders.ProcessDirtyChunks();
+            }
         }
 
         private void SpawnDirtWithVelocity(int x, int y)

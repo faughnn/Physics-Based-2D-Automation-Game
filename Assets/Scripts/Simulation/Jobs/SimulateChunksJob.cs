@@ -747,6 +747,10 @@ namespace FallingSand
             int idx = y * width + x;
             Cell target = cells[idx];
 
+            // Cannot move into cells owned by clusters (rigid bodies)
+            if (target.ownerId != 0)
+                return false;
+
             // Can move into air
             if (target.materialId == Materials.Air)
             {

@@ -20,6 +20,12 @@ namespace FallingSand
         public Rigidbody2D rb;
         public PolygonCollider2D polyCollider;
 
+        // Pixel lookup grid for inverse mapping (gap-free sync)
+        private byte[] pixelLookup;
+        private int lookupMinX, lookupMinY;
+        private int lookupWidth, lookupHeight;
+        private bool lookupBuilt;
+
         // Sync state tracking for sleep optimization
         [HideInInspector] public bool isPixelsSynced;
         [HideInInspector] public Vector2 lastSyncedPosition;
@@ -37,6 +43,9 @@ namespace FallingSand
         // Machine part - arm clusters driven by joints should never be force-slept
         [HideInInspector] public bool isMachinePart;
 
+        // Crush tracking - counts consecutive frames of opposing compression contacts
+        [HideInInspector] public int crushPressureFrames;
+
         /// <summary>
         /// World position from Rigidbody2D.
         /// </summary>
@@ -51,6 +60,65 @@ namespace FallingSand
         /// Linear velocity from Rigidbody2D.
         /// </summary>
         public Vector2 Velocity => rb != null ? rb.linearVelocity : Vector2.zero;
+
+        // Local bounding box (valid after BuildPixelLookup)
+        public int LocalMinX => lookupMinX;
+        public int LocalMaxX => lookupMinX + lookupWidth - 1;
+        public int LocalMinY => lookupMinY;
+        public int LocalMaxY => lookupMinY + lookupHeight - 1;
+
+        /// <summary>
+        /// Build pixel lookup grid for inverse mapping. Called lazily, cached until pixels change.
+        /// </summary>
+        public void BuildPixelLookup()
+        {
+            if (lookupBuilt) return;
+
+            if (pixels == null || pixels.Count == 0)
+            {
+                lookupWidth = 0;
+                lookupHeight = 0;
+                lookupBuilt = true;
+                return;
+            }
+
+            int minX = int.MaxValue, maxX = int.MinValue;
+            int minY = int.MaxValue, maxY = int.MinValue;
+            foreach (var p in pixels)
+            {
+                if (p.localX < minX) minX = p.localX;
+                if (p.localX > maxX) maxX = p.localX;
+                if (p.localY < minY) minY = p.localY;
+                if (p.localY > maxY) maxY = p.localY;
+            }
+
+            lookupMinX = minX;
+            lookupMinY = minY;
+            lookupWidth = maxX - minX + 1;
+            lookupHeight = maxY - minY + 1;
+
+            pixelLookup = new byte[lookupWidth * lookupHeight];
+
+            foreach (var p in pixels)
+            {
+                int idx = (p.localY - lookupMinY) * lookupWidth + (p.localX - lookupMinX);
+                pixelLookup[idx] = p.materialId;
+            }
+
+            lookupBuilt = true;
+        }
+
+        /// <summary>
+        /// Get the material at a local pixel position. Returns Air (0) if no pixel exists there.
+        /// </summary>
+        public byte GetPixelMaterialAt(int localX, int localY)
+        {
+            int gx = localX - lookupMinX;
+            int gy = localY - lookupMinY;
+            if (gx < 0 || gx >= lookupWidth || gy < 0 || gy >= lookupHeight)
+                return Materials.Air;
+            return pixelLookup[gy * lookupWidth + gx];
+        }
 
         /// <summary>
         /// Transform a local pixel position to cell grid coordinates.

@@ -22,6 +22,12 @@
 - BAD: Adding `GetClusterNetForce()` to ClusterManager that loops over cells and calls ForceZoneManager
 - GOOD: Adding `GetNetForceInArea()` to ForceZoneManager itself, so ANY system needing area queries uses the same logic
 
+**Material Conservation**
+
+- Materials must NEVER silently vanish. Total material quantity must be preserved.
+- Materials can change shape, move, or be redistributed, but must not disappear unless explicitly intended (e.g., burning, dissolving, or an explicit destroy action).
+- If an operation can't place all materials (congested area, out of bounds), retain the unplaced materials and give the player a way to retry — never discard them.
+
 **Questions to ask before implementing:**
 1. Does this logic already exist somewhere? (Don't duplicate)
 2. Where should this logic live? (Single responsibility)

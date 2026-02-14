@@ -45,6 +45,16 @@ namespace FallingSand
         private const float PositionTolerance = 0.01f;
         private const float RotationTolerance = 0.1f;  // degrees
 
+        // Compression detection settings
+        private const float MinCrushImpulse = 5f;       // Minimum impulse to count as significant contact
+        private const float OpposingDotThreshold = -0.5f; // Dot product threshold for opposing normals
+        private const int CrushFrameThreshold = 30;       // Frames of sustained compression before fracture (~0.5s)
+        private const int MinPixelsToFracture = 3;         // Clusters smaller than this can't fracture
+
+        // Reusable buffers for compression detection
+        private readonly ContactPoint2D[] contactBuffer = new ContactPoint2D[16];
+        private readonly List<ClusterData> clustersToFracture = new List<ClusterData>();
+
         // Reference to world (set by SandboxController)
         private CellWorld world;
 
@@ -216,7 +226,7 @@ namespace FallingSand
                         {
                             // Don't sleep if cluster is on a belt/lift or is a machine part (e.g. piston arm)
                             // Use cached flags (set by BeltManager/LiftManager BEFORE physics step)
-                            if (cluster.isOnBelt || cluster.isOnLift || cluster.isMachinePart)
+                            if (cluster.isOnBelt || cluster.isOnLift || cluster.isMachinePart || cluster.crushPressureFrames > 0)
                             {
                                 cluster.lowVelocityFrames = 0;
                                 continue;
@@ -235,13 +245,236 @@ namespace FallingSand
                 }
             }
 
-            // STEP 3: Sync cluster pixels to grid at new positions
+            // STEP 3: Check for compression and fracture clusters
+            CheckCompressionAndFracture();
+
+            // STEP 4: Sync cluster pixels to grid at new positions
             PerformanceProfiler.StartTiming(TimingSlot.ClusterSync);
             var syncWatch = System.Diagnostics.Stopwatch.StartNew();
             SyncAllToWorld();
             syncWatch.Stop();
             SyncTimeMs = (float)syncWatch.Elapsed.TotalMilliseconds + (float)clearWatch.Elapsed.TotalMilliseconds;
             PerformanceProfiler.StopTiming(TimingSlot.ClusterSync);
+        }
+
+        // =====================================================================
+        // Compression Detection & Fracture
+        // =====================================================================
+
+        /// <summary>
+        /// Check all dynamic clusters for opposing compression contacts.
+        /// Clusters under sustained compression are fractured into smaller pieces.
+        /// </summary>
+        private void CheckCompressionAndFracture()
+        {
+            clustersToFracture.Clear();
+
+            foreach (var cluster in clusters.Values)
+            {
+                if (cluster.rb == null) continue;
+                if (cluster.rb.IsSleeping()) continue;
+                if (cluster.isMachinePart) continue;
+                if (cluster.pixels.Count < MinPixelsToFracture * 2) continue;
+
+                int contactCount = cluster.rb.GetContacts(contactBuffer);
+                if (contactCount < 2)
+                {
+                    cluster.crushPressureFrames = 0;
+                    continue;
+                }
+
+                // Check for opposing high-impulse contacts
+                bool hasOpposingPressure = false;
+                for (int i = 0; i < contactCount && !hasOpposingPressure; i++)
+                {
+                    if (contactBuffer[i].normalImpulse < MinCrushImpulse) continue;
+
+                    for (int j = i + 1; j < contactCount; j++)
+                    {
+                        if (contactBuffer[j].normalImpulse < MinCrushImpulse) continue;
+
+                        float dot = Vector2.Dot(contactBuffer[i].normal, contactBuffer[j].normal);
+                        if (dot < OpposingDotThreshold)
+                        {
+                            hasOpposingPressure = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasOpposingPressure)
+                {
+                    cluster.crushPressureFrames++;
+                    if (cluster.crushPressureFrames > CrushFrameThreshold)
+                    {
+                        clustersToFracture.Add(cluster);
+                    }
+                }
+                else
+                {
+                    cluster.crushPressureFrames = 0;
+                }
+            }
+
+            // Fracture collected clusters (can't modify dictionary during iteration)
+            for (int i = 0; i < clustersToFracture.Count; i++)
+            {
+                FractureCluster(clustersToFracture[i]);
+            }
+        }
+
+        /// <summary>
+        /// Fracture a cluster into smaller pieces using crack-line partitioning.
+        /// Each pixel is assigned to a group based on which side of 1-2 random crack lines it falls on.
+        /// No pixels are removed — small groups merge into the largest group to preserve all material.
+        /// </summary>
+        public void FractureCluster(ClusterData cluster)
+        {
+            var pixels = cluster.pixels;
+            int pixelCount = pixels.Count;
+
+            // Too small to split into two viable pieces
+            if (pixelCount < MinPixelsToFracture * 2) return;
+
+            // --- Compute bounding box of pixels in local space ---
+            int minX = int.MaxValue, maxX = int.MinValue;
+            int minY = int.MaxValue, maxY = int.MinValue;
+            foreach (var p in pixels)
+            {
+                if (p.localX < minX) minX = p.localX;
+                if (p.localX > maxX) maxX = p.localX;
+                if (p.localY < minY) minY = p.localY;
+                if (p.localY > maxY) maxY = p.localY;
+            }
+
+            // --- Generate crack lines ---
+            int numCracks = (pixelCount < 20) ? 1 : Random.Range(1, 3);
+            float centerX = (minX + maxX) * 0.5f;
+            float centerY = (minY + maxY) * 0.5f;
+            float extentX = (maxX - minX + 1) * 0.3f;
+            float extentY = (maxY - minY + 1) * 0.3f;
+
+            Vector2[] crackPoints = new Vector2[numCracks];
+            Vector2[] crackNormals = new Vector2[numCracks];
+            for (int i = 0; i < numCracks; i++)
+            {
+                crackPoints[i] = new Vector2(
+                    centerX + Random.Range(-extentX, extentX),
+                    centerY + Random.Range(-extentY, extentY));
+                float angle = Random.Range(0f, Mathf.PI);
+                // Normal perpendicular to crack direction — used for signed distance
+                crackNormals[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+            }
+
+            // --- Partition pixels by signed distance to each crack line ---
+            // 1 line → 2 groups (bit 0), 2 lines → up to 4 groups (bit 0 + bit 1)
+            int maxGroups = 1 << numCracks; // 2 or 4
+            int[] groupCounts = new int[maxGroups];
+            int[] pixelGroups = new int[pixelCount];
+
+            for (int pi = 0; pi < pixelCount; pi++)
+            {
+                var p = pixels[pi];
+                int group = 0;
+                for (int ci = 0; ci < numCracks; ci++)
+                {
+                    float dx = p.localX - crackPoints[ci].x;
+                    float dy = p.localY - crackPoints[ci].y;
+                    float signedDist = dx * crackNormals[ci].x + dy * crackNormals[ci].y;
+                    if (signedDist >= 0f)
+                        group |= (1 << ci);
+                }
+                pixelGroups[pi] = group;
+                groupCounts[group]++;
+            }
+
+            // --- Merge small groups into the largest group ---
+            int largestGroup = 0;
+            for (int g = 1; g < maxGroups; g++)
+            {
+                if (groupCounts[g] > groupCounts[largestGroup])
+                    largestGroup = g;
+            }
+
+            for (int g = 0; g < maxGroups; g++)
+            {
+                if (g == largestGroup) continue;
+                if (groupCounts[g] > 0 && groupCounts[g] < MinPixelsToFracture)
+                {
+                    // Merge into largest
+                    groupCounts[largestGroup] += groupCounts[g];
+                    groupCounts[g] = 0;
+                    for (int pi = 0; pi < pixelCount; pi++)
+                    {
+                        if (pixelGroups[pi] == g)
+                            pixelGroups[pi] = largestGroup;
+                    }
+                }
+            }
+
+            // --- Viability check: need at least 2 non-empty groups ---
+            int viableGroups = 0;
+            for (int g = 0; g < maxGroups; g++)
+            {
+                if (groupCounts[g] >= MinPixelsToFracture)
+                    viableGroups++;
+            }
+            if (viableGroups < 2) return;
+
+            // --- Create sub-clusters for each non-empty group ---
+            Vector2 origVelocity = cluster.Velocity;
+            float origAngularVel = cluster.rb != null ? cluster.rb.angularVelocity : 0f;
+            float origRotation = cluster.rb != null ? cluster.rb.rotation : 0f;
+
+            for (int g = 0; g < maxGroups; g++)
+            {
+                if (groupCounts[g] == 0) continue;
+
+                // Collect pixels for this group and compute centroid
+                var groupPixels = new List<ClusterPixel>(groupCounts[g]);
+                float sumLX = 0, sumLY = 0;
+                for (int pi = 0; pi < pixelCount; pi++)
+                {
+                    if (pixelGroups[pi] != g) continue;
+                    var p = pixels[pi];
+                    groupPixels.Add(p);
+                    sumLX += p.localX;
+                    sumLY += p.localY;
+                }
+
+                float centroidLX = sumLX / groupPixels.Count;
+                float centroidLY = sumLY / groupPixels.Count;
+
+                // Convert centroid from local to world space using cluster's transform
+                float cos = Mathf.Cos(cluster.RotationRad);
+                float sin = Mathf.Sin(cluster.RotationRad);
+                float rotCX = centroidLX * cos - centroidLY * sin;
+                float rotCY = centroidLX * sin + centroidLY * cos;
+                Vector2 worldCentroid = cluster.Position + CoordinateUtils.ScaleCellToWorld(new Vector2(rotCX, rotCY));
+
+                // Re-offset pixels relative to new centroid
+                var subPixels = new List<ClusterPixel>(groupPixels.Count);
+                for (int pi = 0; pi < groupPixels.Count; pi++)
+                {
+                    var p = groupPixels[pi];
+                    short newLX = (short)Mathf.RoundToInt(p.localX - centroidLX);
+                    short newLY = (short)Mathf.RoundToInt(p.localY - centroidLY);
+                    subPixels.Add(new ClusterPixel(newLX, newLY, p.materialId));
+                }
+
+                // Create sub-cluster
+                ClusterData subCluster = ClusterFactory.CreateCluster(subPixels, worldCentroid, this);
+                if (subCluster != null && subCluster.rb != null)
+                {
+                    subCluster.rb.linearVelocity = origVelocity;
+                    subCluster.rb.angularVelocity = origAngularVel;
+                    subCluster.rb.rotation = origRotation;
+                }
+            }
+
+            // --- Cleanup original cluster ---
+            Unregister(cluster);
+            Object.Destroy(cluster.gameObject);
         }
 
         /// <summary>
@@ -263,29 +496,59 @@ namespace FallingSand
         }
 
         /// <summary>
-        /// Clear a single cluster's pixels from the world grid.
+        /// Clear a single cluster's pixels from the world grid using inverse mapping.
+        /// Matches the same cell coverage as SyncClusterToWorld to avoid stale cells.
         /// </summary>
         private void ClearClusterPixels(ClusterData cluster)
         {
-            foreach (var pixel in cluster.pixels)
+            cluster.BuildPixelLookup();
+            if (cluster.pixels.Count == 0) return;
+
+            float cos = Mathf.Cos(cluster.RotationRad);
+            float sin = Mathf.Sin(cluster.RotationRad);
+            Vector2 cellCenter = CoordinateUtils.WorldToCellFloat(cluster.Position, world.width, world.height);
+
+            // Compute cell-space bounding box from local bounds + rotation
+            float hx = Mathf.Max(Mathf.Abs(cluster.LocalMinX), Mathf.Abs(cluster.LocalMaxX)) + 1f;
+            float hy = Mathf.Max(Mathf.Abs(cluster.LocalMinY), Mathf.Abs(cluster.LocalMaxY)) + 1f;
+            float absCos = Mathf.Abs(cos);
+            float absSin = Mathf.Abs(sin);
+            float extentX = hx * absCos + hy * absSin;
+            float extentY = hx * absSin + hy * absCos;
+
+            int cellMinX = Mathf.Max(0, Mathf.FloorToInt(cellCenter.x - extentX));
+            int cellMaxX = Mathf.Min(world.width - 1, Mathf.CeilToInt(cellCenter.x + extentX));
+            int cellMinY = Mathf.Max(0, Mathf.FloorToInt(cellCenter.y - extentY));
+            int cellMaxY = Mathf.Min(world.height - 1, Mathf.CeilToInt(cellCenter.y + extentY));
+
+            for (int cy = cellMinY; cy <= cellMaxY; cy++)
             {
-                // Convert from Unity world coords to cell grid coords
-                Vector2Int cellPos = cluster.LocalToWorldCell(pixel, world.width, world.height);
-
-                if (!world.IsInBounds(cellPos.x, cellPos.y))
-                    continue;
-
-                int index = cellPos.y * world.width + cellPos.x;
-                Cell cell = world.cells[index];
-
-                // Only clear if this cluster owns the cell
-                if (cell.ownerId == cluster.clusterId)
+                for (int cx = cellMinX; cx <= cellMaxX; cx++)
                 {
-                    cell.materialId = Materials.Air;
-                    cell.ownerId = 0;
-                    cell.velocityX = 0;
-                    cell.velocityY = 0;
-                    world.cells[index] = cell;
+                    // Inverse transform: cell coords -> local pixel coords
+                    float dx = cx - cellCenter.x;
+                    float dy = cellCenter.y - cy;
+                    float localXf = dx * cos + dy * sin;
+                    float localYf = -dx * sin + dy * cos;
+
+                    int localX = Mathf.RoundToInt(localXf);
+                    int localY = Mathf.RoundToInt(localYf);
+
+                    byte materialId = cluster.GetPixelMaterialAt(localX, localY);
+                    if (materialId == Materials.Air) continue;
+
+                    int index = cy * world.width + cx;
+                    Cell cell = world.cells[index];
+
+                    // Only clear if this cluster owns the cell
+                    if (cell.ownerId == cluster.clusterId)
+                    {
+                        cell.materialId = Materials.Air;
+                        cell.ownerId = 0;
+                        cell.velocityX = 0;
+                        cell.velocityY = 0;
+                        world.cells[index] = cell;
+                    }
                 }
             }
         }
@@ -314,42 +577,70 @@ namespace FallingSand
         }
 
         /// <summary>
-        /// Sync a single cluster's pixels to the world grid.
-        /// Displaces any loose cells that are in the way.
+        /// Sync a single cluster's pixels to the world grid using inverse mapping.
+        /// Iterates over the cell-space bounding box and maps each cell back to local
+        /// pixel space, eliminating gaps caused by forward-mapping rounding.
         /// </summary>
         private void SyncClusterToWorld(ClusterData cluster)
         {
-            foreach (var pixel in cluster.pixels)
+            cluster.BuildPixelLookup();
+            if (cluster.pixels.Count == 0) return;
+
+            float cos = Mathf.Cos(cluster.RotationRad);
+            float sin = Mathf.Sin(cluster.RotationRad);
+            Vector2 cellCenter = CoordinateUtils.WorldToCellFloat(cluster.Position, world.width, world.height);
+
+            // Compute cell-space bounding box from local bounds + rotation
+            float hx = Mathf.Max(Mathf.Abs(cluster.LocalMinX), Mathf.Abs(cluster.LocalMaxX)) + 1f;
+            float hy = Mathf.Max(Mathf.Abs(cluster.LocalMinY), Mathf.Abs(cluster.LocalMaxY)) + 1f;
+            float absCos = Mathf.Abs(cos);
+            float absSin = Mathf.Abs(sin);
+            float extentX = hx * absCos + hy * absSin;
+            float extentY = hx * absSin + hy * absCos;
+
+            int cellMinX = Mathf.Max(0, Mathf.FloorToInt(cellCenter.x - extentX));
+            int cellMaxX = Mathf.Min(world.width - 1, Mathf.CeilToInt(cellCenter.x + extentX));
+            int cellMinY = Mathf.Max(0, Mathf.FloorToInt(cellCenter.y - extentY));
+            int cellMaxY = Mathf.Min(world.height - 1, Mathf.CeilToInt(cellCenter.y + extentY));
+
+            for (int cy = cellMinY; cy <= cellMaxY; cy++)
             {
-                // Convert from Unity world coords to cell grid coords
-                Vector2Int cellPos = cluster.LocalToWorldCell(pixel, world.width, world.height);
-
-                if (!world.IsInBounds(cellPos.x, cellPos.y))
-                    continue;
-
-                int index = cellPos.y * world.width + cellPos.x;
-                Cell existing = world.cells[index];
-
-                // If there's loose material here, push it aside
-                if (existing.materialId != Materials.Air && existing.ownerId == 0)
+                for (int cx = cellMinX; cx <= cellMaxX; cx++)
                 {
-                    DisplaceCell(cellPos, existing, cluster.Velocity);
+                    // Inverse transform: cell coords -> local pixel coords
+                    float dx = cx - cellCenter.x;
+                    float dy = cellCenter.y - cy; // cell Y+ down -> Unity Y+ up
+                    float localXf = dx * cos + dy * sin;
+                    float localYf = -dx * sin + dy * cos;
+
+                    int localX = Mathf.RoundToInt(localXf);
+                    int localY = Mathf.RoundToInt(localYf);
+
+                    byte materialId = cluster.GetPixelMaterialAt(localX, localY);
+                    if (materialId == Materials.Air) continue;
+
+                    int index = cy * world.width + cx;
+                    Cell existing = world.cells[index];
+
+                    // If there's loose material here, push it aside
+                    if (existing.materialId != Materials.Air && existing.ownerId == 0)
+                    {
+                        DisplaceCell(new Vector2Int(cx, cy), existing, cluster.Velocity);
+                    }
+
+                    // Write cluster pixel to grid
+                    Cell newCell = new Cell
+                    {
+                        materialId = materialId,
+                        ownerId = cluster.clusterId,
+                        velocityX = 0,
+                        velocityY = 0,
+                        temperature = 20,
+                        structureId = 0
+                    };
+                    world.cells[index] = newCell;
+                    world.MarkDirty(cx, cy);
                 }
-
-                // Write cluster pixel to grid
-                Cell newCell = new Cell
-                {
-                    materialId = pixel.materialId,
-                    ownerId = cluster.clusterId,
-                    velocityX = 0,
-                    velocityY = 0,
-                    temperature = 20,
-                    structureId = 0
-                };
-                world.cells[index] = newCell;
-
-                // Mark chunk dirty
-                world.MarkDirty(cellPos.x, cellPos.y);
             }
         }
 
