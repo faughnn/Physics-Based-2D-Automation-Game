@@ -1,6 +1,6 @@
 # Bug: Structure Manager Code Duplication
 
-## Status: OPEN
+## Status: FIXED
 
 ## Category: Architecture / Refactor
 

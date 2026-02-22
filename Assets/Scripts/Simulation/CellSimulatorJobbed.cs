@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Unity.Collections;
 using Unity.Jobs;
@@ -54,7 +55,10 @@ namespace FallingSand
         /// <param name="liftManager">Optional lift manager for lift-cluster interaction and lift zones</param>
         /// <param name="wallManager">Optional wall manager for ghost tile blocking</param>
         /// <param name="machineManager">Optional machine manager for piston motor updates</param>
-        public void Simulate(CellWorld world, ClusterManager clusterManager = null, BeltManager beltManager = null, LiftManager liftManager = null, WallManager wallManager = null, MachineManager machineManager = null)
+        public void Simulate(CellWorld world, ClusterManager clusterManager = null,
+            IReadOnlyList<IClusterForceProvider> forceProviders = null,
+            BeltManager beltManager = null, LiftManager liftManager = null, WallManager wallManager = null,
+            MachineManager machineManager = null)
         {
             stopwatch.Restart();
 
@@ -73,11 +77,15 @@ namespace FallingSand
                 float fixedStep = UnityEngine.Time.fixedDeltaTime;
                 while (physicsAccumulator >= fixedStep)
                 {
-                    // Apply belt/lift forces each physics step
-                    if (beltManager != null)
-                        beltManager.ApplyForcesToClusters(clusterManager, world.width, world.height);
-                    if (liftManager != null)
-                        liftManager.ApplyForcesToClusters(clusterManager, world.width, world.height);
+                    // Reset per-frame force counts, then let each provider increment
+                    foreach (var cluster in clusterManager.AllClusters)
+                        cluster.activeForceCount = 0;
+
+                    if (forceProviders != null)
+                    {
+                        for (int i = 0; i < forceProviders.Count; i++)
+                            forceProviders[i].ApplyForcesToClusters(clusterManager, world.width, world.height);
+                    }
 
                     // Update piston motors before physics step
                     if (machineManager != null)

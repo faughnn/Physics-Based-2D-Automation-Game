@@ -1,6 +1,6 @@
 # Bug: DisplaceCell Silently Loses Material
 
-## Status: OPEN
+## Status: FIXED
 
 ## Category: Bug / Material Conservation Violation
 

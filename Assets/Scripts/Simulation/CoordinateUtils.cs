@@ -126,5 +126,15 @@ namespace FallingSand
         {
             return worldVector * WorldToCellScale;
         }
+
+        /// <summary>
+        /// Convert a screen position to cell coordinates via a Camera.
+        /// Combines ScreenToWorldPoint + WorldToCell in one call.
+        /// </summary>
+        public static Vector2Int ScreenToCell(Camera camera, Vector2 screenPos, int worldWidth, int worldHeight)
+        {
+            Vector3 worldPos = camera.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, 0));
+            return WorldToCell(worldPos, worldWidth, worldHeight);
+        }
     }
 }

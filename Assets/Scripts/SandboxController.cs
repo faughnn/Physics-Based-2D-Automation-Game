@@ -5,6 +5,15 @@ using FallingSand.UI;
 
 namespace FallingSand
 {
+    public enum SandboxMode
+    {
+        Paint,
+        Belt,
+        Lift,
+        Wall,
+        Piston
+    }
+
     public class SandboxController : MonoBehaviour
     {
         [Header("World Settings")]
@@ -26,22 +35,13 @@ namespace FallingSand
         // Material names for display
         private readonly string[] materialNames = { "Air", "Stone", "Sand", "Water", "Oil", "Steam" };
 
-        // Belt placement mode
-        private bool beltMode = false;
+        // Placement mode
+        private SandboxMode currentMode = SandboxMode.Paint;
         private sbyte beltDirection = 1;  // +1 = right, -1 = left
         private bool beltDragging = false;
         private int beltDragY = -1;  // Snapped Y position locked during drag
-
-        // Lift placement mode
-        private bool liftMode = false;
         private bool liftDragging = false;
         private int liftDragX = -1;  // Snapped X position locked during drag (vertical line)
-
-        // Wall placement mode
-        private bool wallMode = false;
-
-        // Piston placement mode
-        private bool pistonMode = false;
         private PistonDirection pistonDirection = PistonDirection.Right;
 
         // Input references
@@ -52,14 +52,11 @@ namespace FallingSand
         public CellSimulatorJobbed Simulator => simulation?.Simulator;
         public byte CurrentMaterial => currentMaterial;
         public string CurrentMaterialName => currentMaterial < materialNames.Length ? materialNames[currentMaterial] : $"Material {currentMaterial}";
-        public bool BeltMode => beltMode;
+        public SandboxMode CurrentMode => currentMode;
         public sbyte BeltDirection => beltDirection;
         public BeltManager BeltManager => simulation?.BeltManager;
-        public bool LiftMode => liftMode;
         public LiftManager LiftManager => simulation?.LiftManager;
-        public bool WallMode => wallMode;
         public WallManager WallManager => simulation?.WallManager;
-        public bool PistonMode => pistonMode;
         public PistonDirection PistonDirection => pistonDirection;
         public PistonManager PistonManager => simulation?.MachineManager?.Pistons;
 
@@ -137,99 +134,70 @@ namespace FallingSand
         {
             if (mouse == null) return;
 
-            if (beltMode)
+            switch (currentMode)
             {
-                // Belt placement mode with horizontal line snapping
-                if (mouse.leftButton.wasPressedThisFrame)
-                {
-                    // Start of drag - lock the Y position
-                    Vector2Int cell = GetCellAtMouse();
-                    beltDragY = BeltManager.SnapToGrid(cell.y);
-                    beltDragging = true;
-                    PlaceBeltAtMouse();
-                }
-                else if (mouse.leftButton.isPressed && beltDragging)
-                {
-                    // Continue drag - use locked Y
-                    PlaceBeltAtMouse();
-                }
-                else if (mouse.leftButton.wasReleasedThisFrame)
-                {
-                    // End of drag
-                    beltDragging = false;
-                    beltDragY = -1;
-                }
-                else if (mouse.rightButton.isPressed)
-                {
-                    RemoveBeltAtMouse();
-                }
-            }
-            else if (liftMode)
-            {
-                // Lift placement mode with vertical line snapping
-                if (mouse.leftButton.wasPressedThisFrame)
-                {
-                    // Start of drag - lock the X position
-                    Vector2Int cell = GetCellAtMouse();
-                    liftDragX = LiftManager.SnapToGrid(cell.x);
-                    liftDragging = true;
-                    PlaceLiftAtMouse();
-                }
-                else if (mouse.leftButton.isPressed && liftDragging)
-                {
-                    // Continue drag - use locked X
-                    PlaceLiftAtMouse();
-                }
-                else if (mouse.leftButton.wasReleasedThisFrame)
-                {
-                    // End of drag
-                    liftDragging = false;
-                    liftDragX = -1;
-                }
-                else if (mouse.rightButton.isPressed)
-                {
-                    RemoveLiftAtMouse();
-                }
-            }
-            else if (wallMode)
-            {
-                // Wall placement mode - 8x8 grid-aligned blocks
-                if (mouse.leftButton.isPressed)
-                {
-                    PlaceWallAtMouse();
-                }
-                else if (mouse.rightButton.isPressed)
-                {
-                    RemoveWallAtMouse();
-                }
-            }
-            else if (pistonMode)
-            {
-                // Piston placement mode - 16x16 grid-aligned blocks
-                if (mouse.leftButton.isPressed)
-                {
-                    PlacePistonAtMouse();
-                }
-                else if (mouse.rightButton.isPressed)
-                {
-                    RemovePistonAtMouse();
-                }
-            }
-            else
-            {
-                // Normal paint mode
-                if (mouse.leftButton.isPressed)
-                {
-                    PaintAtMouse(currentMaterial);
-                }
-                else if (mouse.rightButton.isPressed)
-                {
-                    PaintAtMouse(Materials.Air);
-                }
+                case SandboxMode.Belt:
+                    if (mouse.leftButton.wasPressedThisFrame)
+                    {
+                        Vector2Int cell = GetCellAtMouse();
+                        beltDragY = BeltManager.SnapToGrid(cell.y);
+                        beltDragging = true;
+                        PlaceBeltAtMouse();
+                    }
+                    else if (mouse.leftButton.isPressed && beltDragging)
+                        PlaceBeltAtMouse();
+                    else if (mouse.leftButton.wasReleasedThisFrame)
+                    {
+                        beltDragging = false;
+                        beltDragY = -1;
+                    }
+                    else if (mouse.rightButton.isPressed)
+                        RemoveBeltAtMouse();
+                    break;
+
+                case SandboxMode.Lift:
+                    if (mouse.leftButton.wasPressedThisFrame)
+                    {
+                        Vector2Int cell = GetCellAtMouse();
+                        liftDragX = LiftManager.SnapToGrid(cell.x);
+                        liftDragging = true;
+                        PlaceLiftAtMouse();
+                    }
+                    else if (mouse.leftButton.isPressed && liftDragging)
+                        PlaceLiftAtMouse();
+                    else if (mouse.leftButton.wasReleasedThisFrame)
+                    {
+                        liftDragging = false;
+                        liftDragX = -1;
+                    }
+                    else if (mouse.rightButton.isPressed)
+                        RemoveLiftAtMouse();
+                    break;
+
+                case SandboxMode.Wall:
+                    if (mouse.leftButton.isPressed)
+                        PlaceWallAtMouse();
+                    else if (mouse.rightButton.isPressed)
+                        RemoveWallAtMouse();
+                    break;
+
+                case SandboxMode.Piston:
+                    if (mouse.leftButton.isPressed)
+                        PlacePistonAtMouse();
+                    else if (mouse.rightButton.isPressed)
+                        RemovePistonAtMouse();
+                    break;
+
+                default: // Paint
+                    if (mouse.leftButton.isPressed)
+                        PaintAtMouse(currentMaterial);
+                    else if (mouse.rightButton.isPressed)
+                        PaintAtMouse(Materials.Air);
+                    break;
             }
 
             // Adjust brush size with scroll wheel (only in paint mode)
-            if (!beltMode && !liftMode && !wallMode && !pistonMode)
+            if (currentMode == SandboxMode.Paint)
             {
                 float scroll = mouse.scroll.ReadValue().y;
                 if (scroll != 0)
@@ -239,56 +207,36 @@ namespace FallingSand
             }
         }
 
+        private void ToggleMode(SandboxMode mode)
+        {
+            currentMode = (currentMode == mode) ? SandboxMode.Paint : mode;
+        }
+
         private void HandleMaterialSelection()
         {
             if (keyboard == null) return;
 
-            // B key toggles belt mode (turns off lift/wall/piston mode)
-            if (keyboard.bKey.wasPressedThisFrame)
-            {
-                beltMode = !beltMode;
-                if (beltMode) { liftMode = false; wallMode = false; pistonMode = false; }
-            }
+            if (keyboard.bKey.wasPressedThisFrame) ToggleMode(SandboxMode.Belt);
+            if (keyboard.lKey.wasPressedThisFrame) ToggleMode(SandboxMode.Lift);
+            if (keyboard.wKey.wasPressedThisFrame) ToggleMode(SandboxMode.Wall);
+            if (keyboard.pKey.wasPressedThisFrame) ToggleMode(SandboxMode.Piston);
 
-            // L key toggles lift mode (turns off belt/wall/piston mode)
-            if (keyboard.lKey.wasPressedThisFrame)
+            // Q/E to rotate belt direction or piston direction
+            if (currentMode == SandboxMode.Belt)
             {
-                liftMode = !liftMode;
-                if (liftMode) { beltMode = false; wallMode = false; pistonMode = false; }
+                if (keyboard.qKey.wasPressedThisFrame) beltDirection = -1;
+                if (keyboard.eKey.wasPressedThisFrame) beltDirection = 1;
             }
-
-            // W key toggles wall mode (turns off belt/lift/piston mode)
-            if (keyboard.wKey.wasPressedThisFrame)
-            {
-                wallMode = !wallMode;
-                if (wallMode) { beltMode = false; liftMode = false; pistonMode = false; }
-            }
-
-            // P key toggles piston mode (turns off belt/lift/wall mode)
-            if (keyboard.pKey.wasPressedThisFrame)
-            {
-                pistonMode = !pistonMode;
-                if (pistonMode) { beltMode = false; liftMode = false; wallMode = false; }
-            }
-
-            // Q/E to rotate belt direction (belt mode) or piston direction (piston mode)
-            if (beltMode)
+            else if (currentMode == SandboxMode.Piston)
             {
                 if (keyboard.qKey.wasPressedThisFrame)
-                    beltDirection = -1;
+                    pistonDirection = (PistonDirection)(((int)pistonDirection + 3) % 4);
                 if (keyboard.eKey.wasPressedThisFrame)
-                    beltDirection = 1;
-            }
-            else if (pistonMode)
-            {
-                if (keyboard.qKey.wasPressedThisFrame)
-                    pistonDirection = (PistonDirection)(((int)pistonDirection + 3) % 4); // Cycle backwards
-                if (keyboard.eKey.wasPressedThisFrame)
-                    pistonDirection = (PistonDirection)(((int)pistonDirection + 1) % 4); // Cycle forwards
+                    pistonDirection = (PistonDirection)(((int)pistonDirection + 1) % 4);
             }
 
-            // Number keys to select materials (only when not in structure placement mode)
-            if (!beltMode && !liftMode && !wallMode && !pistonMode)
+            // Number keys to select materials (only in paint mode)
+            if (currentMode == SandboxMode.Paint)
             {
                 if (keyboard.digit1Key.wasPressedThisFrame) currentMaterial = Materials.Air;
                 if (keyboard.digit2Key.wasPressedThisFrame) currentMaterial = Materials.Stone;
@@ -343,10 +291,7 @@ namespace FallingSand
 
         private Vector2Int GetCellAtMouse()
         {
-            Vector2 mousePos = mouse.position.ReadValue();
-            Vector3 mouseWorldPos = mainCamera.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0));
-
-            return CoordinateUtils.WorldToCell(mouseWorldPos, simulation.WorldWidth, simulation.WorldHeight);
+            return CoordinateUtils.ScreenToCell(mainCamera, mouse.position.ReadValue(), simulation.WorldWidth, simulation.WorldHeight);
         }
 
         private void PlaceBeltAtMouse()
@@ -363,7 +308,7 @@ namespace FallingSand
             if (simulation.BeltManager.PlaceBelt(cell.x, y, beltDirection))
             {
                 // Mark chunks dirty for terrain collider regeneration (belts are static)
-                MarkBeltChunksDirty(gridX, gridY);
+                MarkStructureChunksDirty(gridX, gridY);
             }
         }
 
@@ -379,21 +324,13 @@ namespace FallingSand
             if (simulation.BeltManager.RemoveBelt(cell.x, cell.y))
             {
                 // Mark chunks dirty for terrain collider regeneration
-                MarkBeltChunksDirty(gridX, gridY);
+                MarkStructureChunksDirty(gridX, gridY);
             }
         }
 
-        private void MarkBeltChunksDirty(int gridX, int gridY)
+        private void MarkStructureChunksDirty(int gridX, int gridY, int size = 8)
         {
-            // Mark all chunks covered by the 8x8 belt block
-            var terrainColliders = simulation.TerrainColliders;
-            for (int dy = 0; dy < 8; dy++)
-            {
-                for (int dx = 0; dx < 8; dx++)
-                {
-                    terrainColliders.MarkChunkDirtyAt(gridX + dx, gridY + dy);
-                }
-            }
+            StructureUtils.MarkChunksDirtyForBlock(simulation.TerrainColliders, gridX, gridY, size);
         }
 
         private void PlaceLiftAtMouse()
@@ -420,7 +357,7 @@ namespace FallingSand
             if (simulation.WallManager.PlaceWall(gridX, gridY))
             {
                 // Mark chunks dirty for terrain collider regeneration
-                MarkWallChunksDirty(gridX, gridY);
+                MarkStructureChunksDirty(gridX, gridY);
             }
         }
 
@@ -433,22 +370,10 @@ namespace FallingSand
             if (simulation.WallManager.RemoveWall(gridX, gridY))
             {
                 // Mark chunks dirty for terrain collider regeneration
-                MarkWallChunksDirty(gridX, gridY);
+                MarkStructureChunksDirty(gridX, gridY);
             }
         }
 
-        private void MarkWallChunksDirty(int gridX, int gridY)
-        {
-            // Mark all chunks covered by the 8x8 wall block
-            var terrainColliders = simulation.TerrainColliders;
-            for (int dy = 0; dy < 8; dy++)
-            {
-                for (int dx = 0; dx < 8; dx++)
-                {
-                    terrainColliders.MarkChunkDirtyAt(gridX + dx, gridY + dy);
-                }
-            }
-        }
 
         private void PlacePistonAtMouse()
         {

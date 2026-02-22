@@ -3,6 +3,13 @@ using UnityEngine;
 
 namespace FallingSand
 {
+    public struct ClusterSpawnRegion
+    {
+        public int X, Y, Width, Height;
+        public ClusterSpawnRegion(int x, int y, int width, int height)
+        { X = x; Y = y; Width = width; Height = height; }
+    }
+
     /// <summary>
     /// Configuration data for a game level.
     /// Defines terrain regions to fill and spawn positions.
@@ -36,6 +43,9 @@ namespace FallingSand
         /// Each objective corresponds to a bucket at the same index in BucketSpawns.
         /// </summary>
         public List<ObjectiveData> Objectives { get; set; } = new List<ObjectiveData>();
+
+        public List<ClusterSpawnRegion> ClusterSpawns { get; set; } = new List<ClusterSpawnRegion>();
+        public bool UnlockAllAbilities { get; set; } = false;
     }
 
     /// <summary>

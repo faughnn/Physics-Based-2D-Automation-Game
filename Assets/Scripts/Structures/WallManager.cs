@@ -10,8 +10,10 @@ namespace FallingSand
     /// Handles 8x8 block placement/removal with ghost support for placing through terrain.
     /// Walls are purely static - no simulation behavior, no per-frame updates.
     /// </summary>
-    public class WallManager : IDisposable
+    public class WallManager : IStructureManager, IDisposable
     {
+        private static readonly Color ghostColor = new Color(0.4f, 0.4f, 0.5f, 0.35f);
+        public Color GhostColor => ghostColor;
         private readonly CellWorld world;
         private readonly TerrainColliderManager terrainColliders;
         private readonly int width;
@@ -42,12 +44,7 @@ namespace FallingSand
         /// <summary>
         /// Snaps a coordinate to the 8x8 grid.
         /// </summary>
-        public static int SnapToGrid(int coord)
-        {
-            if (coord < 0)
-                return ((coord - BlockSize + 1) / BlockSize) * BlockSize;
-            return (coord / BlockSize) * BlockSize;
-        }
+        public static int SnapToGrid(int coord) => StructureUtils.SnapToGrid(coord, BlockSize);
 
         /// <summary>
         /// Places an 8x8 wall block at the specified position.
@@ -187,6 +184,8 @@ namespace FallingSand
             return wallTiles[y * width + x].exists;
         }
 
+        public bool HasStructureAt(int x, int y) => HasWallAt(x, y);
+
         /// <summary>
         /// Gets the wall tile at the specified position.
         /// </summary>
@@ -214,7 +213,9 @@ namespace FallingSand
                 int gridY = blockKey / width;
                 int gridX = blockKey % width;
 
-                // Check that all cells are Air
+                // Check if ALL 64 cells are Air.
+                // CanMoveTo uses source-aware ghost blocking: external material is
+                // blocked from entering, but material inside can move within/out.
                 bool allClear = true;
                 for (int dy = 0; dy < BlockSize && allClear; dy++)
                 {
@@ -242,6 +243,7 @@ namespace FallingSand
                         wallTiles[posKey] = updated;
 
                         world.SetCell(cx, cy, Materials.Wall);
+
                         world.MarkDirty(cx, cy);
                         terrainColliders.MarkChunkDirtyAt(cx, cy);
                     }
@@ -259,90 +261,17 @@ namespace FallingSand
         /// </summary>
         public void GetGhostBlockPositions(List<Vector2Int> positions)
         {
-            if (ghostBlockOrigins.Count == 0) return;
-
-            var keys = ghostBlockOrigins.ToNativeArray(Allocator.Temp);
-            for (int i = 0; i < keys.Length; i++)
-            {
-                int blockKey = keys[i];
-                int gridY = blockKey / width;
-                int gridX = blockKey % width;
-                positions.Add(new Vector2Int(gridX, gridY));
-            }
-            keys.Dispose();
+            StructureUtils.GetGhostBlockPositions(ghostBlockOrigins, width, positions);
         }
 
         private void MarkChunksHasStructure(int cellX, int cellY, int areaWidth, int areaHeight)
         {
-            // Find all chunks that overlap with this area
-            int startChunkX = cellX / CellWorld.ChunkSize;
-            int startChunkY = cellY / CellWorld.ChunkSize;
-            int endChunkX = (cellX + areaWidth - 1) / CellWorld.ChunkSize;
-            int endChunkY = (cellY + areaHeight - 1) / CellWorld.ChunkSize;
-
-            for (int cy = startChunkY; cy <= endChunkY; cy++)
-            {
-                for (int cx = startChunkX; cx <= endChunkX; cx++)
-                {
-                    if (cx >= 0 && cx < world.chunksX && cy >= 0 && cy < world.chunksY)
-                    {
-                        int chunkIndex = cy * world.chunksX + cx;
-                        ChunkState chunk = world.chunks[chunkIndex];
-                        chunk.flags |= ChunkFlags.HasStructure;
-                        world.chunks[chunkIndex] = chunk;
-                    }
-                }
-            }
+            StructureUtils.MarkChunksHasStructure(world, cellX, cellY, areaWidth, areaHeight);
         }
 
         private void UpdateChunksStructureFlag(int cellX, int cellY, int areaWidth, int areaHeight)
         {
-            // Find all chunks that overlap with this area
-            int startChunkX = cellX / CellWorld.ChunkSize;
-            int startChunkY = cellY / CellWorld.ChunkSize;
-            int endChunkX = (cellX + areaWidth - 1) / CellWorld.ChunkSize;
-            int endChunkY = (cellY + areaHeight - 1) / CellWorld.ChunkSize;
-
-            for (int chunkY = startChunkY; chunkY <= endChunkY; chunkY++)
-            {
-                for (int chunkX = startChunkX; chunkX <= endChunkX; chunkX++)
-                {
-                    if (chunkX >= 0 && chunkX < world.chunksX && chunkY >= 0 && chunkY < world.chunksY)
-                    {
-                        UpdateSingleChunkStructureFlag(chunkX, chunkY);
-                    }
-                }
-            }
-        }
-
-        private void UpdateSingleChunkStructureFlag(int chunkX, int chunkY)
-        {
-            int chunkStartX = chunkX * CellWorld.ChunkSize;
-            int chunkStartY = chunkY * CellWorld.ChunkSize;
-            int chunkEndX = Math.Min(chunkStartX + CellWorld.ChunkSize, width);
-            int chunkEndY = Math.Min(chunkStartY + CellWorld.ChunkSize, height);
-
-            bool hasStructure = false;
-            for (int y = chunkStartY; y < chunkEndY && !hasStructure; y++)
-            {
-                for (int x = chunkStartX; x < chunkEndX && !hasStructure; x++)
-                {
-                    if (wallTiles[y * width + x].exists)
-                    {
-                        hasStructure = true;
-                    }
-                }
-            }
-
-            int chunkIndex = chunkY * world.chunksX + chunkX;
-            ChunkState chunk = world.chunks[chunkIndex];
-
-            if (hasStructure)
-                chunk.flags |= ChunkFlags.HasStructure;
-            else
-                chunk.flags &= unchecked((byte)~ChunkFlags.HasStructure);
-
-            world.chunks[chunkIndex] = chunk;
+            StructureUtils.UpdateChunksStructureFlag(world, cellX, cellY, areaWidth, areaHeight, width, height, HasWallAt);
         }
 
         public void Dispose()

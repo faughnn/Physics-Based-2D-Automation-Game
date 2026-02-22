@@ -6,12 +6,11 @@ namespace FallingSand
     /// <summary>
     /// Renders semi-transparent overlays at ghost structure block positions.
     /// Ghost blocks are structures placed through terrain that haven't activated yet.
+    /// Iterates over registered IStructureManager instances — no per-type code needed.
     /// </summary>
     public class GhostStructureRenderer : MonoBehaviour
     {
-        private BeltManager beltManager;
-        private LiftManager liftManager;
-        private WallManager wallManager;
+        private List<IStructureManager> structureManagers;
         private int worldWidth;
         private int worldHeight;
 
@@ -23,21 +22,12 @@ namespace FallingSand
         private Texture2D ghostTexture;
         private Sprite ghostSprite;
 
-        // Colors for ghost overlays
-        private static readonly Color BeltGhostColor = new Color(0.3f, 0.3f, 0.4f, 0.35f);
-        private static readonly Color LiftGhostColor = new Color(0.3f, 0.5f, 0.3f, 0.35f);
-        private static readonly Color WallGhostColor = new Color(0.4f, 0.4f, 0.5f, 0.35f);
+        // Reusable list to avoid GC
+        private readonly List<Vector2Int> positions = new List<Vector2Int>();
 
-        // Reusable lists to avoid GC
-        private readonly List<Vector2Int> beltPositions = new List<Vector2Int>();
-        private readonly List<Vector2Int> liftPositions = new List<Vector2Int>();
-        private readonly List<Vector2Int> wallPositions = new List<Vector2Int>();
-
-        public void Initialize(BeltManager beltManager, LiftManager liftManager, WallManager wallManager, int worldWidth, int worldHeight)
+        public void Initialize(List<IStructureManager> structureManagers, int worldWidth, int worldHeight)
         {
-            this.beltManager = beltManager;
-            this.liftManager = liftManager;
-            this.wallManager = wallManager;
+            this.structureManagers = structureManagers;
             this.worldWidth = worldWidth;
             this.worldHeight = worldHeight;
 
@@ -61,63 +51,41 @@ namespace FallingSand
 
         private void LateUpdate()
         {
-            if (beltManager == null || liftManager == null || wallManager == null) return;
-
-            beltPositions.Clear();
-            liftPositions.Clear();
-            wallPositions.Clear();
-
-            beltManager.GetGhostBlockPositions(beltPositions);
-            liftManager.GetGhostBlockPositions(liftPositions);
-            wallManager.GetGhostBlockPositions(wallPositions);
-
-            int totalNeeded = beltPositions.Count + liftPositions.Count + wallPositions.Count;
-
-            // Ensure pool has enough sprites
-            while (pool.Count < totalNeeded)
-            {
-                var go = new GameObject("GhostOverlay");
-                go.transform.SetParent(transform);
-                var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite = ghostSprite;
-                sr.sortingOrder = 90;
-                go.SetActive(false);
-                pool.Add(sr);
-            }
+            if (structureManagers == null) return;
 
             int idx = 0;
 
-            // Position belt ghost sprites
-            for (int i = 0; i < beltPositions.Count; i++)
+            for (int m = 0; m < structureManagers.Count; m++)
             {
-                var pos = beltPositions[i];
-                var sr = pool[idx++];
-                Vector2 worldPos = CoordinateUtils.CellToWorld(pos.x + 3.5f, pos.y + 3.5f, worldWidth, worldHeight);
-                sr.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
-                sr.color = BeltGhostColor;
-                sr.gameObject.SetActive(true);
-            }
+                var manager = structureManagers[m];
+                positions.Clear();
+                manager.GetGhostBlockPositions(positions);
 
-            // Position lift ghost sprites
-            for (int i = 0; i < liftPositions.Count; i++)
-            {
-                var pos = liftPositions[i];
-                var sr = pool[idx++];
-                Vector2 worldPos = CoordinateUtils.CellToWorld(pos.x + 3.5f, pos.y + 3.5f, worldWidth, worldHeight);
-                sr.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
-                sr.color = LiftGhostColor;
-                sr.gameObject.SetActive(true);
-            }
+                if (positions.Count == 0) continue;
 
-            // Position wall ghost sprites
-            for (int i = 0; i < wallPositions.Count; i++)
-            {
-                var pos = wallPositions[i];
-                var sr = pool[idx++];
-                Vector2 worldPos = CoordinateUtils.CellToWorld(pos.x + 3.5f, pos.y + 3.5f, worldWidth, worldHeight);
-                sr.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
-                sr.color = WallGhostColor;
-                sr.gameObject.SetActive(true);
+                Color ghostColor = manager.GhostColor;
+
+                // Ensure pool has enough sprites
+                while (pool.Count < idx + positions.Count)
+                {
+                    var go = new GameObject("GhostOverlay");
+                    go.transform.SetParent(transform);
+                    var sr = go.AddComponent<SpriteRenderer>();
+                    sr.sprite = ghostSprite;
+                    sr.sortingOrder = 90;
+                    go.SetActive(false);
+                    pool.Add(sr);
+                }
+
+                for (int i = 0; i < positions.Count; i++)
+                {
+                    var pos = positions[i];
+                    var sr = pool[idx++];
+                    Vector2 worldPos = CoordinateUtils.CellToWorld(pos.x + 3.5f, pos.y + 3.5f, worldWidth, worldHeight);
+                    sr.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
+                    sr.color = ghostColor;
+                    sr.gameObject.SetActive(true);
+                }
             }
 
             // Deactivate unused sprites

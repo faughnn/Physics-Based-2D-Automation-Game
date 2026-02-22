@@ -30,45 +30,39 @@ namespace FallingSand.Debugging
             if (sandbox != null)
             {
                 // Mode display
-                if (sandbox.BeltMode)
+                switch (sandbox.CurrentMode)
                 {
-                    string dir = sandbox.BeltDirection > 0 ? "RIGHT" : "LEFT";
-                    DrawLabel($"[BELT MODE] Direction: {dir}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.cyan);
-                    lines++;
-
-                    int tileCount = sandbox.BeltManager?.TileCount ?? 0;
-                    int beltCount = sandbox.BeltManager?.BeltCount ?? 0;
-                    DrawLabel($"Belts: {beltCount} | Tiles: {tileCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
-                    lines++;
-                }
-                else if (sandbox.LiftMode)
-                {
-                    DrawLabel("[LIFT MODE] Hollow force zone", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.green);
-                    lines++;
-
-                    int liftCount = sandbox.LiftManager?.LiftCount ?? 0;
-                    DrawLabel($"Lifts: {liftCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
-                    lines++;
-                }
-                else if (sandbox.WallMode)
-                {
-                    DrawLabel("[WALL MODE] Solid 8x8 blocks", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.gray);
-                    lines++;
-                }
-                else if (sandbox.PistonMode)
-                {
-                    DrawLabel($"[PISTON MODE] Direction: {sandbox.PistonDirection}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.yellow);
-                    lines++;
-
-                    int pistonCount = sandbox.PistonManager?.PistonCount ?? 0;
-                    DrawLabel($"Pistons: {pistonCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
-                    lines++;
-                }
-                else
-                {
-                    // Current material
-                    DrawLabel($"Material: {sandbox.CurrentMaterialName}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
-                    lines++;
+                    case SandboxMode.Belt:
+                        string dir = sandbox.BeltDirection > 0 ? "RIGHT" : "LEFT";
+                        DrawLabel($"[BELT MODE] Direction: {dir}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.cyan);
+                        lines++;
+                        int tileCount = sandbox.BeltManager?.TileCount ?? 0;
+                        int beltCount = sandbox.BeltManager?.BeltCount ?? 0;
+                        DrawLabel($"Belts: {beltCount} | Tiles: {tileCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
+                        lines++;
+                        break;
+                    case SandboxMode.Lift:
+                        DrawLabel("[LIFT MODE] Hollow force zone", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.green);
+                        lines++;
+                        int liftCount = sandbox.LiftManager?.LiftCount ?? 0;
+                        DrawLabel($"Lifts: {liftCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
+                        lines++;
+                        break;
+                    case SandboxMode.Wall:
+                        DrawLabel("[WALL MODE] Solid 8x8 blocks", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.gray);
+                        lines++;
+                        break;
+                    case SandboxMode.Piston:
+                        DrawLabel($"[PISTON MODE] Direction: {sandbox.PistonDirection}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.yellow);
+                        lines++;
+                        int pistonCount = sandbox.PistonManager?.PistonCount ?? 0;
+                        DrawLabel($"Pistons: {pistonCount}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
+                        lines++;
+                        break;
+                    default:
+                        DrawLabel($"Material: {sandbox.CurrentMaterialName}", x, y + lines * lineHeight, width, lineHeight, labelStyle, Color.white);
+                        lines++;
+                        break;
                 }
 
                 // Control hints

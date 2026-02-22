@@ -70,6 +70,10 @@ namespace FallingSand
         private int extendedMaxX;
         private int extendedMaxY;
 
+        // Index of the cell currently being simulated (y * width + x).
+        // Used by CanMoveTo for source-aware ghost blocking.
+        private int currentCellIdx;
+
         public void Execute(int jobIndex)
         {
             int chunkIndex = chunkIndices[jobIndex];
@@ -115,6 +119,7 @@ namespace FallingSand
         private void SimulateCell(int x, int y)
         {
             int index = y * width + x;
+            currentCellIdx = index;
             Cell cell = cells[index];
 
             // Skip air
@@ -754,14 +759,20 @@ namespace FallingSand
             // Can move into air
             if (target.materialId == Materials.Air)
             {
-                // Check for blocking ghost structures (belts and walls only, lifts are passable)
-                // Ghost belt blocks movement
+                // Ghost belts and walls block external material from entering, but
+                // allow material already inside the ghost area to move within/out.
+                // currentCellIdx is the index of the cell being simulated.
                 if (beltTiles.IsCreated && beltTiles.TryGetValue(idx, out BeltTile bt) && bt.isGhost)
-                    return false;
-
-                // Ghost wall blocks movement
+                {
+                    // Only block if source is NOT also in a ghost belt
+                    if (!beltTiles.TryGetValue(currentCellIdx, out BeltTile srcBt) || !srcBt.isGhost)
+                        return false;
+                }
                 if (wallTiles.IsCreated && wallTiles[idx].exists && wallTiles[idx].isGhost)
-                    return false;
+                {
+                    if (!wallTiles[currentCellIdx].exists || !wallTiles[currentCellIdx].isGhost)
+                        return false;
+                }
 
                 return true;
             }

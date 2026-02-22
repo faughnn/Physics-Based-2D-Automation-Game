@@ -3,12 +3,17 @@ using FallingSand.Debugging;
 
 namespace FallingSand
 {
+    public enum GameLevel { Tutorial, Crushing }
+
     /// <summary>
     /// Main controller for the Game scene. Manages the simulation,
     /// player spawning, and initial terrain creation.
     /// </summary>
     public class GameController : MonoBehaviour
     {
+        [Header("Level Selection")]
+        [SerializeField] private GameLevel selectedLevel = GameLevel.Tutorial;
+
         [Header("World Settings")]
         [SerializeField] private int worldWidth = 1920;
         [SerializeField] private int worldHeight = 1620;
@@ -32,8 +37,20 @@ namespace FallingSand
         private void Start()
         {
             // 1. Use level-defined world dimensions (overrides serialized fields)
-            worldWidth = TutorialLevelData.WorldWidth;
-            worldHeight = TutorialLevelData.WorldHeight;
+            LevelData levelData;
+            switch (selectedLevel)
+            {
+                case GameLevel.Crushing:
+                    worldWidth = CrushingLevelData.WorldWidth;
+                    worldHeight = CrushingLevelData.WorldHeight;
+                    levelData = CrushingLevelData.Create();
+                    break;
+                default:
+                    worldWidth = TutorialLevelData.WorldWidth;
+                    worldHeight = TutorialLevelData.WorldHeight;
+                    levelData = TutorialLevelData.Create();
+                    break;
+            }
 
             // 2. Find or create SimulationManager with correct dimensions
             simulation = SimulationManager.Instance;
@@ -51,7 +68,6 @@ namespace FallingSand
 
             // 5. Load level terrain
             levelLoader = new LevelLoader(simulation);
-            var levelData = TutorialLevelData.Create();
             levelLoader.LoadLevel(levelData);
 
             // 5b. Generate terrain colliders immediately (before player spawns)
@@ -61,6 +77,15 @@ namespace FallingSand
             foreach (var objective in levelData.Objectives)
             {
                 ProgressionManager.Instance.AddObjective(objective);
+            }
+
+            // 6b. Unlock all abilities if level requests it
+            if (levelData.UnlockAllAbilities)
+            {
+                var pm = ProgressionManager.Instance;
+                pm.ForceUnlock(Ability.PlaceBelts);
+                pm.ForceUnlock(Ability.PlaceLifts);
+                pm.ForceUnlock(Ability.PlacePistons);
             }
 
             // 7. Create the player at level-defined spawn
@@ -221,7 +246,7 @@ namespace FallingSand
 
             // Visual - SpriteRenderer with a white square sprite, tinted
             var sr = player.AddComponent<SpriteRenderer>();
-            sr.sprite = CreateRectSprite(Mathf.RoundToInt(playerWidth), Mathf.RoundToInt(playerHeight));
+            sr.sprite = IconFactory.CreateRectSprite(Mathf.RoundToInt(playerWidth), Mathf.RoundToInt(playerHeight));
             sr.color = playerColor;
             sr.sortingOrder = 10;  // Render above terrain
 
@@ -240,39 +265,13 @@ namespace FallingSand
             Debug.Log($"Player created at cell {spawnCell} -> world {worldPos}");
         }
 
-        /// <summary>
-        /// Creates a simple rectangular sprite with the given dimensions.
-        /// </summary>
-        private Sprite CreateRectSprite(int width, int height)
-        {
-            // Create a small white texture
-            Texture2D tex = new Texture2D(width, height);
-            tex.filterMode = FilterMode.Point;
-
-            Color[] pixels = new Color[width * height];
-            for (int i = 0; i < pixels.Length; i++)
-            {
-                pixels[i] = Color.white;
-            }
-            tex.SetPixels(pixels);
-            tex.Apply();
-
-            // Create sprite with pivot at center
-            return Sprite.Create(
-                tex,
-                new Rect(0, 0, width, height),
-                new Vector2(0.5f, 0.5f),
-                1f  // 1 pixel per unit
-            );
-        }
-
         private void CreateShovelItem(Vector2Int cellPosition)
         {
             GameObject item = new GameObject("Shovel");
 
             // Visual - sprite is 16x64 pixels at PPU=2, resulting in 8x32 world units (player height)
             var sr = item.AddComponent<SpriteRenderer>();
-            sr.sprite = CreateShovelSprite();
+            sr.sprite = IconFactory.CreateShovelSprite();
             sr.color = shovelColor;
             sr.sortingOrder = 5; // Below player (10), above terrain
 
@@ -287,42 +286,6 @@ namespace FallingSand
             // Position in world coordinates using CoordinateUtils
             Vector2 worldPos = CoordinateUtils.CellToWorld(cellPosition.x, cellPosition.y, worldWidth, worldHeight);
             item.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
-        }
-
-        private Sprite CreateShovelSprite()
-        {
-            // 16x64 pixel texture at PPU=2 = 8x32 world units (same height as player)
-            int width = 16, height = 64;
-            Texture2D tex = new Texture2D(width, height);
-            tex.filterMode = FilterMode.Point;
-
-            Color[] pixels = new Color[width * height];
-            // Fill with transparent
-            for (int i = 0; i < pixels.Length; i++)
-                pixels[i] = Color.clear;
-
-            // Draw shovel shape
-            int bladeHeight = 20;  // Bottom portion - wider blade
-            int handleWidth = 4;   // Thin handle
-
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    // Handle (thin, top portion)
-                    if (y >= bladeHeight && x >= (width - handleWidth) / 2 && x < (width + handleWidth) / 2)
-                        pixels[y * width + x] = Color.white;
-                    // Blade (wider, bottom portion)
-                    else if (y < bladeHeight && x >= 2 && x < width - 2)
-                        pixels[y * width + x] = Color.white;
-                }
-            }
-
-            tex.SetPixels(pixels);
-            tex.Apply();
-
-            // PPU=2: 16x64 pixels becomes 8x32 world units
-            return Sprite.Create(tex, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f), 2f);
         }
 
         private void CreateBuckets(LevelData levelData)

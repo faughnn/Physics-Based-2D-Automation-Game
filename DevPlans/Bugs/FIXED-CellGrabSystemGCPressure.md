@@ -1,6 +1,6 @@
 # Bug: CellGrabSystem Creates Excessive GC Allocations During Drop
 
-## Status: OPEN
+## Status: FIXED
 
 ## Category: Performance
 

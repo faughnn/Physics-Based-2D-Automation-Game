@@ -34,11 +34,10 @@ namespace FallingSand
         // Manual sleep tracking (physics solver maintains equilibrium velocity, so we force sleep)
         [HideInInspector] public int lowVelocityFrames;
 
-        // Belt interaction - set by BeltManager before physics, used by ClusterManager after physics
-        [HideInInspector] public bool isOnBelt;
-
-        // Lift interaction - set by LiftManager before physics, used by ClusterManager after physics
-        [HideInInspector] public bool isOnLift;
+        // Per-frame count of active force providers affecting this cluster.
+        // Reset to 0 before providers run; each provider increments when it affects this cluster.
+        // Used by ClusterManager's sleep guard to prevent force-sleeping.
+        [HideInInspector] public int activeForceCount;
 
         // Machine part - arm clusters driven by joints should never be force-slept
         [HideInInspector] public bool isMachinePart;

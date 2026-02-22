@@ -1,6 +1,6 @@
 # Bug: Structure Placement Logic Duplicated Between Scenes
 
-## Status: OPEN
+## Status: FIXED
 
 ## Category: Architecture / Refactor
 

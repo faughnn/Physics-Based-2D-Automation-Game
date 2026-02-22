@@ -1,6 +1,6 @@
 # Bug: SandboxController Uses Boolean Flags Instead of Enum
 
-## Status: OPEN
+## Status: FIXED
 
 ## Category: Architecture / Code Smell
 

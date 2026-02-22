@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -37,6 +36,9 @@ namespace FallingSand
         private GameObject previewObject;
         private SpriteRenderer previewRenderer;
         private Texture2D previewTexture;
+
+        // Reusable buffer for ring positions (avoids GC from IEnumerable/yield)
+        private readonly List<Vector2Int> ringPositionsBuffer = new List<Vector2Int>();
 
         private void Start()
         {
@@ -192,10 +194,7 @@ namespace FallingSand
         /// </summary>
         private Vector2Int GetCellAtMouse()
         {
-            Vector2 mousePos = mouse.position.ReadValue();
-            Vector3 mouseWorldPos = mainCamera.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0));
-
-            return CoordinateUtils.WorldToCell(mouseWorldPos, simulation.WorldWidth, simulation.WorldHeight);
+            return CoordinateUtils.ScreenToCell(mainCamera, mouse.position.ReadValue(), simulation.WorldWidth, simulation.WorldHeight);
         }
 
         /// <summary>
@@ -289,11 +288,13 @@ namespace FallingSand
 
             for (int ring = 0; ring <= maxRing && spawned < totalGrabbedCount; ring++)
             {
-                foreach (var pos in GetRingPositions(centerX, centerY, ring))
+                GetRingPositions(centerX, centerY, ring, ringPositionsBuffer);
+                for (int i = 0; i < ringPositionsBuffer.Count; i++)
                 {
                     if (spawned >= totalGrabbedCount)
                         break;
 
+                    var pos = ringPositionsBuffer[i];
                     if (CanPlaceCell(pos.x, pos.y))
                     {
                         byte materialToPlace = GetNextMaterialToPlace();
@@ -314,29 +315,31 @@ namespace FallingSand
         }
 
         /// <summary>
-        /// Returns positions forming a ring at the given distance from center.
+        /// Fills the provided list with positions forming a ring at the given distance from center.
         /// Ring 0 = just the center. Ring 1 = 8 positions around center, etc.
         /// </summary>
-        private IEnumerable<Vector2Int> GetRingPositions(int centerX, int centerY, int ring)
+        private void GetRingPositions(int centerX, int centerY, int ring, List<Vector2Int> positions)
         {
+            positions.Clear();
+
             if (ring == 0)
             {
-                yield return new Vector2Int(centerX, centerY);
-                yield break;
+                positions.Add(new Vector2Int(centerX, centerY));
+                return;
             }
 
             // Top and bottom edges
             for (int dx = -ring; dx <= ring; dx++)
             {
-                yield return new Vector2Int(centerX + dx, centerY - ring); // Top
-                yield return new Vector2Int(centerX + dx, centerY + ring); // Bottom
+                positions.Add(new Vector2Int(centerX + dx, centerY - ring));
+                positions.Add(new Vector2Int(centerX + dx, centerY + ring));
             }
 
             // Left and right edges (excluding corners already covered)
             for (int dy = -ring + 1; dy < ring; dy++)
             {
-                yield return new Vector2Int(centerX - ring, centerY + dy); // Left
-                yield return new Vector2Int(centerX + ring, centerY + dy); // Right
+                positions.Add(new Vector2Int(centerX - ring, centerY + dy));
+                positions.Add(new Vector2Int(centerX + ring, centerY + dy));
             }
         }
 
@@ -356,17 +359,23 @@ namespace FallingSand
         /// </summary>
         private byte GetNextMaterialToPlace()
         {
-            // Iterate over keys to avoid modifying collection during iteration
-            foreach (var materialId in grabbedCells.Keys.ToList())
+            // Find first material with remaining count, then modify after exiting the enumerator.
+            // Modifying a Dictionary during foreach is undefined behavior in C#.
+            byte foundKey = Materials.Air;
+            foreach (var kvp in grabbedCells)
             {
-                if (grabbedCells[materialId] > 0)
+                if (kvp.Value > 0)
                 {
-                    grabbedCells[materialId]--;
-                    totalGrabbedCount--;
-                    return materialId;
+                    foundKey = kvp.Key;
+                    break;
                 }
             }
-            return Materials.Air;
+            if (foundKey != Materials.Air)
+            {
+                grabbedCells[foundKey]--;
+                totalGrabbedCount--;
+            }
+            return foundKey;
         }
 
         /// <summary>

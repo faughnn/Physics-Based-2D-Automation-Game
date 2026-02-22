@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Jobs;
 using UnityEngine;
 
@@ -25,6 +26,12 @@ namespace FallingSand
         private CellRenderer cellRenderer;
         private GhostStructureRenderer ghostRenderer;
 
+        // Registered structure managers for ghost updates and rendering
+        private readonly List<IStructureManager> structureManagers = new List<IStructureManager>();
+
+        // Registered force providers for cluster physics
+        private readonly List<IClusterForceProvider> forceProviders = new List<IClusterForceProvider>();
+
         // Singleton instance
         private static SimulationManager instance;
         public static SimulationManager Instance => instance;
@@ -39,6 +46,7 @@ namespace FallingSand
         public WallManager WallManager => wallManager;
         public MachineManager MachineManager => machineManager;
         public CellRenderer CellRenderer => cellRenderer;
+        public IReadOnlyList<IStructureManager> StructureManagers => structureManagers;
         public int WorldWidth => worldWidth;
         public int WorldHeight => worldHeight;
 
@@ -102,6 +110,15 @@ namespace FallingSand
             // Create wall manager
             wallManager = new WallManager(world, terrainColliders);
 
+            // Register structure managers for ghost updates and rendering
+            structureManagers.Add(beltManager);
+            structureManagers.Add(liftManager);
+            structureManagers.Add(wallManager);
+
+            // Register force providers for cluster physics
+            forceProviders.Add(beltManager);
+            forceProviders.Add(liftManager);
+
             // Create machine manager (pistons, etc.)
             machineManager = new MachineManager();
             machineManager.Initialize(world, clusterManager, terrainColliders);
@@ -114,7 +131,7 @@ namespace FallingSand
             // Create ghost structure renderer (overlays for underground structures)
             GameObject ghostObj = new GameObject("GhostStructureRenderer");
             ghostRenderer = ghostObj.AddComponent<GhostStructureRenderer>();
-            ghostRenderer.Initialize(beltManager, liftManager, wallManager, worldWidth, worldHeight);
+            ghostRenderer.Initialize(structureManagers, worldWidth, worldHeight);
 
             // Create graphics manager (handles visual effects)
             GameObject graphicsObj = new GameObject("GraphicsManager");
@@ -136,9 +153,8 @@ namespace FallingSand
 
             // Activate ghost structures whose terrain has been cleared
             PerformanceProfiler.StartTiming(TimingSlot.GhostStateUpdate);
-            beltManager.UpdateGhostStates();
-            liftManager.UpdateGhostStates();
-            wallManager.UpdateGhostStates();
+            for (int i = 0; i < structureManagers.Count; i++)
+                structureManagers[i].UpdateGhostStates();
             PerformanceProfiler.StopTiming(TimingSlot.GhostStateUpdate);
 
             // Rebuild terrain colliders before physics so the player never collides with stale geometry
@@ -152,7 +168,7 @@ namespace FallingSand
             // beltManager applies horizontal force to clusters resting on belts
             // liftManager applies upward force to cells/clusters in lift zones
             // Note: Cell sim group timings are handled internally in CellSimulatorJobbed
-            simulator.Simulate(world, clusterManager, beltManager, liftManager, wallManager, machineManager);
+            simulator.Simulate(world, clusterManager, forceProviders, beltManager, liftManager, wallManager, machineManager);
 
             // Update piston shaft visuals
             machineManager?.UpdateVisuals();

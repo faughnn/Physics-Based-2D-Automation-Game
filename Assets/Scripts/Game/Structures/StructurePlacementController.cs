@@ -369,14 +369,7 @@ namespace FallingSand
 
         private void MarkStructureChunksDirty(int gridX, int gridY, int blockSize = 8)
         {
-            var terrainColliders = simulation.TerrainColliders;
-            for (int dy = 0; dy < blockSize; dy++)
-            {
-                for (int dx = 0; dx < blockSize; dx++)
-                {
-                    terrainColliders.MarkChunkDirtyAt(gridX + dx, gridY + dy);
-                }
-            }
+            StructureUtils.MarkChunksDirtyForBlock(simulation.TerrainColliders, gridX, gridY, blockSize);
         }
 
         private void UpdatePreview()
@@ -436,6 +429,7 @@ namespace FallingSand
                 !world.IsInBounds(gridX + blockSize - 1, gridY + blockSize - 1))
                 return PlacementResult.Invalid;
 
+            var managers = simulation.StructureManagers;
             bool anyGhost = false;
 
             // Check if area is clear
@@ -446,19 +440,14 @@ namespace FallingSand
                     int cx = gridX + dx;
                     int cy = gridY + dy;
 
-                    // Check for existing belt
-                    if (simulation.BeltManager.HasBeltAt(cx, cy))
-                        return PlacementResult.Invalid;
+                    // Check for existing structures (belts, lifts, walls)
+                    for (int m = 0; m < managers.Count; m++)
+                    {
+                        if (managers[m].HasStructureAt(cx, cy))
+                            return PlacementResult.Invalid;
+                    }
 
-                    // Check for existing lift
-                    if (simulation.LiftManager.HasLiftAt(cx, cy))
-                        return PlacementResult.Invalid;
-
-                    // Check for existing wall
-                    if (simulation.WallManager.HasWallAt(cx, cy))
-                        return PlacementResult.Invalid;
-
-                    // Check for existing piston
+                    // Check for existing machines (pistons)
                     if (simulation.MachineManager.HasMachineAt(cx, cy))
                         return PlacementResult.Invalid;
 
@@ -508,9 +497,7 @@ namespace FallingSand
 
         private Vector2Int GetCellAtMouse()
         {
-            Vector2 mousePos = mouse.position.ReadValue();
-            Vector3 worldPos = mainCamera.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, 0));
-            return CoordinateUtils.WorldToCell(worldPos, simulation.WorldWidth, simulation.WorldHeight);
+            return CoordinateUtils.ScreenToCell(mainCamera, mouse.position.ReadValue(), simulation.WorldWidth, simulation.WorldHeight);
         }
 
         private void ShowLockedMessage(string message)

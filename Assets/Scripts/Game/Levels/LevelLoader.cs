@@ -25,6 +25,38 @@ namespace FallingSand
             {
                 FillRegion(region);
             }
+
+            // Create clusters from spawn regions (terrain must be filled first)
+            if (level.ClusterSpawns.Count > 0)
+            {
+                var clusterManager = simulation.ClusterManager;
+                var world = simulation.World;
+                var terrainColliders = simulation.TerrainColliders;
+
+                foreach (var spawn in level.ClusterSpawns)
+                {
+                    var cluster = ClusterFactory.CreateClusterFromRegion(
+                        world, spawn.X, spawn.Y, spawn.Width, spawn.Height, clusterManager);
+
+                    // Force-sleep clusters created during level load so they don't jiggle
+                    // against terrain colliders. They'll wake naturally when terrain is dug out.
+                    if (cluster != null && cluster.rb != null)
+                    {
+                        cluster.rb.linearVelocity = Vector2.zero;
+                        cluster.rb.angularVelocity = 0f;
+                        cluster.rb.Sleep();
+                    }
+
+                    // Mark affected chunks dirty for terrain collider rebuild
+                    for (int y = spawn.Y; y < spawn.Y + spawn.Height; y++)
+                    {
+                        for (int x = spawn.X; x < spawn.X + spawn.Width; x++)
+                        {
+                            terrainColliders.MarkChunkDirtyAt(x, y);
+                        }
+                    }
+                }
+            }
         }
 
         private void FillRegion(TerrainRegion region)

@@ -10,8 +10,11 @@ namespace FallingSand
     /// Manages all conveyor belts in the world.
     /// Handles 8x8 block placement/removal, belt merging, and simulation.
     /// </summary>
-    public class BeltManager : IDisposable
+    public class BeltManager : IStructureManager, IClusterForceProvider, IDisposable
     {
+        private static readonly Color ghostColor = new Color(0.3f, 0.3f, 0.4f, 0.35f);
+        public Color GhostColor => ghostColor;
+
         private readonly CellWorld world;
         private readonly TerrainColliderManager terrainColliders;
         private readonly int width;
@@ -53,13 +56,8 @@ namespace FallingSand
         /// <summary>
         /// Snaps a coordinate to the 8x8 grid.
         /// </summary>
-        public static int SnapToGrid(int coord)
-        {
-            // Handle negative coordinates correctly
-            if (coord < 0)
-                return ((coord - BeltStructure.Width + 1) / BeltStructure.Width) * BeltStructure.Width;
-            return (coord / BeltStructure.Width) * BeltStructure.Width;
-        }
+        public static int SnapToGrid(int coord) => StructureUtils.SnapToGrid(coord, BeltStructure.Width);
+
 
         /// <summary>
         /// Places an 8x8 belt block at the specified position.
@@ -368,6 +366,8 @@ namespace FallingSand
             return beltTiles.ContainsKey(y * width + x);
         }
 
+        public bool HasStructureAt(int x, int y) => HasBeltAt(x, y);
+
         /// <summary>
         /// Gets the belt tile at the specified position, if any.
         /// </summary>
@@ -617,77 +617,14 @@ namespace FallingSand
             }
         }
 
-        private void MarkChunksHasStructure(int cellX, int cellY, int width, int height)
+        private void MarkChunksHasStructure(int cellX, int cellY, int areaWidth, int areaHeight)
         {
-            // Find all chunks that overlap with this area
-            int startChunkX = cellX / CellWorld.ChunkSize;
-            int startChunkY = cellY / CellWorld.ChunkSize;
-            int endChunkX = (cellX + width - 1) / CellWorld.ChunkSize;
-            int endChunkY = (cellY + height - 1) / CellWorld.ChunkSize;
-
-            for (int cy = startChunkY; cy <= endChunkY; cy++)
-            {
-                for (int cx = startChunkX; cx <= endChunkX; cx++)
-                {
-                    if (cx >= 0 && cx < world.chunksX && cy >= 0 && cy < world.chunksY)
-                    {
-                        int chunkIndex = cy * world.chunksX + cx;
-                        ChunkState chunk = world.chunks[chunkIndex];
-                        chunk.flags |= ChunkFlags.HasStructure;
-                        world.chunks[chunkIndex] = chunk;
-                    }
-                }
-            }
+            StructureUtils.MarkChunksHasStructure(world, cellX, cellY, areaWidth, areaHeight);
         }
 
         private void UpdateChunksStructureFlag(int cellX, int cellY, int areaWidth, int areaHeight)
         {
-            // Find all chunks that overlap with this area
-            int startChunkX = cellX / CellWorld.ChunkSize;
-            int startChunkY = cellY / CellWorld.ChunkSize;
-            int endChunkX = (cellX + areaWidth - 1) / CellWorld.ChunkSize;
-            int endChunkY = (cellY + areaHeight - 1) / CellWorld.ChunkSize;
-
-            for (int chunkY = startChunkY; chunkY <= endChunkY; chunkY++)
-            {
-                for (int chunkX = startChunkX; chunkX <= endChunkX; chunkX++)
-                {
-                    if (chunkX >= 0 && chunkX < world.chunksX && chunkY >= 0 && chunkY < world.chunksY)
-                    {
-                        UpdateSingleChunkStructureFlag(chunkX, chunkY);
-                    }
-                }
-            }
-        }
-
-        private void UpdateSingleChunkStructureFlag(int chunkX, int chunkY)
-        {
-            int chunkStartX = chunkX * CellWorld.ChunkSize;
-            int chunkStartY = chunkY * CellWorld.ChunkSize;
-            int chunkEndX = Math.Min(chunkStartX + CellWorld.ChunkSize, world.width);
-            int chunkEndY = Math.Min(chunkStartY + CellWorld.ChunkSize, world.height);
-
-            bool hasStructure = false;
-            for (int y = chunkStartY; y < chunkEndY && !hasStructure; y++)
-            {
-                for (int x = chunkStartX; x < chunkEndX && !hasStructure; x++)
-                {
-                    if (beltTiles.ContainsKey(y * width + x))
-                    {
-                        hasStructure = true;
-                    }
-                }
-            }
-
-            int chunkIndex = chunkY * world.chunksX + chunkX;
-            ChunkState chunk = world.chunks[chunkIndex];
-
-            if (hasStructure)
-                chunk.flags |= ChunkFlags.HasStructure;
-            else
-                chunk.flags &= unchecked((byte)~ChunkFlags.HasStructure);
-
-            world.chunks[chunkIndex] = chunk;
+            StructureUtils.UpdateChunksStructureFlag(world, cellX, cellY, areaWidth, areaHeight, width, world.height, HasBeltAt);
         }
 
         /// <summary>
@@ -721,8 +658,9 @@ namespace FallingSand
                     }
                 }
 
-                // Mark cluster as on belt - used by ClusterManager to prevent sleeping
-                cluster.isOnBelt = foundBelt;
+                // Increment force count so ClusterManager won't force-sleep this cluster
+                if (foundBelt)
+                    cluster.activeForceCount++;
             }
         }
 
@@ -788,7 +726,9 @@ namespace FallingSand
                 int gridY = blockKey / width;
                 int gridX = blockKey % width;
 
-                // Check if ALL 64 cells are Air
+                // Check if ALL 64 cells are Air.
+                // CanMoveTo uses source-aware ghost blocking: external material is
+                // blocked from entering, but material inside can move within/out.
                 bool allAir = true;
                 for (int dy = 0; dy < BeltStructure.Height && allAir; dy++)
                 {
@@ -848,17 +788,7 @@ namespace FallingSand
         /// </summary>
         public void GetGhostBlockPositions(List<Vector2Int> positions)
         {
-            if (ghostBlockOrigins.Count == 0) return;
-
-            var keys = ghostBlockOrigins.ToNativeArray(Allocator.Temp);
-            for (int i = 0; i < keys.Length; i++)
-            {
-                int blockKey = keys[i];
-                int gridY = blockKey / width;
-                int gridX = blockKey % width;
-                positions.Add(new Vector2Int(gridX, gridY));
-            }
-            keys.Dispose();
+            StructureUtils.GetGhostBlockPositions(ghostBlockOrigins, width, positions);
         }
 
         /// <summary>

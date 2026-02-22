@@ -30,6 +30,14 @@ namespace FallingSand
         private CellWorld world;
         private bool collectionEnabled = true;
 
+        // Cluster collection
+        private RectInt interiorBounds;
+        private float clusterScanTimer = 0f;
+        private const float ClusterScanInterval = 0.5f;
+
+        // Reusable dictionary to avoid GC allocation per frame
+        private readonly Dictionary<byte, int> collectedDict = new Dictionary<byte, int>();
+
         // Objective tracking
         private string objectiveId;
         private bool startsInactive = false;
@@ -77,6 +85,14 @@ namespace FallingSand
             );
 
             collectionZone = new CollectionZone(world, collectionBounds);
+
+            // Store full interior bounds for cluster detection
+            interiorBounds = new RectInt(
+                cellPosition.x + wallThickness,
+                cellPosition.y,
+                widthInCells,
+                depthInCells
+            );
 
             // Create bucket walls using Stone material
             CreateBucketWalls(cellPosition);
@@ -328,11 +344,73 @@ namespace FallingSand
 
             if (collected > 0)
             {
-                // Create a dictionary for the collected material
-                var collectedDict = new Dictionary<byte, int> { { targetMaterial, collected } };
-
-                // Pass our objectiveId so the count is credited to THIS bucket
+                collectedDict.Clear();
+                collectedDict[targetMaterial] = collected;
                 ProgressionManager.Instance?.RecordCollection(collectedDict, objectiveId);
+            }
+
+            // Periodically scan for clusters fully inside the bucket
+            clusterScanTimer -= Time.deltaTime;
+            if (clusterScanTimer <= 0f)
+            {
+                clusterScanTimer = ClusterScanInterval;
+                TryCollectClusters();
+            }
+        }
+
+        private void TryCollectClusters()
+        {
+            var clusterManager = SimulationManager.Instance?.ClusterManager;
+            if (clusterManager == null) return;
+
+            // Collect into a temp list to avoid modifying during iteration
+            var toCollect = new List<ClusterData>();
+
+            foreach (var cluster in clusterManager.AllClusters)
+            {
+                if (cluster == null) continue;
+                if (cluster.isMachinePart) continue;
+                if (cluster.Velocity.sqrMagnitude > 4f) continue; // velocity > 2
+
+                // Check if ALL pixels fall within the interior bounds
+                bool allInside = true;
+                int matchingPixels = 0;
+
+                foreach (var pixel in cluster.pixels)
+                {
+                    Vector2Int cellPos = cluster.LocalToWorldCell(pixel, world.width, world.height);
+                    if (cellPos.x < interiorBounds.x || cellPos.x >= interiorBounds.x + interiorBounds.width ||
+                        cellPos.y < interiorBounds.y || cellPos.y >= interiorBounds.y + interiorBounds.height)
+                    {
+                        allInside = false;
+                        break;
+                    }
+                    if (pixel.materialId == targetMaterial)
+                        matchingPixels++;
+                }
+
+                if (allInside && matchingPixels > 0)
+                    toCollect.Add(cluster);
+            }
+
+            foreach (var cluster in toCollect)
+            {
+                // Count matching pixels before destroying
+                int count = 0;
+                foreach (var pixel in cluster.pixels)
+                {
+                    if (pixel.materialId == targetMaterial)
+                        count++;
+                }
+
+                clusterManager.RemoveCluster(cluster);
+
+                if (count > 0)
+                {
+                    collectedDict.Clear();
+                    collectedDict[targetMaterial] = count;
+                    ProgressionManager.Instance?.RecordCollection(collectedDict, objectiveId);
+                }
             }
         }
 
